@@ -14,7 +14,10 @@ type Status =
   | { kind: 'idle' }
   | { kind: 'busy'; message: string }
   | { kind: 'done'; message: string; warnings: string[] }
-  | { kind: 'error'; errors: string[] }
+  // Заголовок хранится вместе с ошибками: разбор ответа и отрисовка падают
+  // по разным причинам, и сваливать их под одну подпись — значит посылать
+  // искать проблему не там.
+  | { kind: 'error'; heading: string; errors: string[] }
 
 export function App() {
   const [subject, setSubject] = useState<Subject>('physics')
@@ -94,7 +97,8 @@ export function App() {
     } catch (error) {
       setStatus({
         kind: 'error',
-        errors: [error instanceof Error ? error.message : 'Не удалось нарисовать урок'],
+        heading: 'Не получилось нарисовать урок:',
+        errors: [error instanceof Error ? error.message : 'Неизвестная ошибка Miro'],
       })
     }
   }
@@ -102,7 +106,7 @@ export function App() {
   function drawFromAnswer() {
     const parsed = parseLessonResponse(answer)
     if (!parsed.ok) {
-      setStatus({ kind: 'error', errors: parsed.errors })
+      setStatus({ kind: 'error', heading: 'Не получилось разобрать ответ:', errors: parsed.errors })
       return
     }
     void draw(parsed.lesson, parsed.warnings)
@@ -244,7 +248,7 @@ export function App() {
 
       {status.kind === 'error' && (
         <div className="status error" ref={statusRef}>
-          <div className="status-heading">Не получилось разобрать ответ:</div>
+          <div className="status-heading">{status.heading}</div>
           <ul>
             {status.errors.map((error) => (
               <li key={error}>{error}</li>
