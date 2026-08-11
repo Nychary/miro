@@ -1,5 +1,11 @@
 node_modules/
 dist/
+
+# Учебники и авторские материалы репетитора: нужны для разработки,
+# но чужие права в репозиторий не кладём.
+materials/
+!materials/README.md
+
 .env
 .env.local
 *.log
