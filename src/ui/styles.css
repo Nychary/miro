@@ -11,14 +11,33 @@
   box-sizing: border-box;
 }
 
+/*
+ * Панель живёт во фрейме Miro, и полагаться на прокрутку самого фрейма нельзя:
+ * она может быть отключена, и тогда всё, что не поместилось на первый экран,
+ * становится недостижимым — включая результат нажатия на кнопку. Поэтому
+ * область прокрутки делаем свою, внутри панели.
+ */
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  padding: 20px;
+  padding: 0;
+  overflow: hidden;
   font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--ink);
   background: #fff;
+}
+
+#root {
+  height: 100%;
+  padding: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 h1 {
