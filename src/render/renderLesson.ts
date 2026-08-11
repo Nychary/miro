@@ -28,33 +28,56 @@ export async function renderLesson(lesson: Lesson): Promise<RenderResult> {
     width: CONTENT_WIDTH,
   })
 
-  await renderHeader(canvas, lesson)
+  let answersCanvas: Canvas | null = null
+  let frame: Frame | null = null
+  let answersFrame: Frame | null = null
 
-  for (const block of lesson.blocks) {
-    if (block.type === 'answers') continue
-    await renderBlock(canvas, block, lesson)
-  }
+  try {
+    await renderHeader(canvas, lesson)
 
-  const answersBlock = lesson.blocks.find((block): block is AnswersBlock => block.type === 'answers')
-  const answersCanvas = answersBlock
-    ? await renderAnswersAside(answersBlock, {
+    for (const block of lesson.blocks) {
+      if (block.type === 'answers') continue
+      await renderBlock(canvas, block, lesson)
+    }
+
+    const answersBlock = lesson.blocks.find((block): block is AnswersBlock => block.type === 'answers')
+    if (answersBlock) {
+      answersCanvas = await renderAnswersAside(answersBlock, {
         left: origin.left + ANSWERS_OFFSET_X,
         top: origin.top + FRAME_PADDING,
       })
-    : null
+    }
 
-  const frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill)
-  const answersFrame =
-    answersCanvas && !answersCanvas.isEmpty
-      ? await wrapInFrame(answersCanvas, `${frameTitle(lesson)} — ответы`, color.answersFill)
-      : null
+    frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill)
+    if (answersCanvas && !answersCanvas.isEmpty) {
+      answersFrame = await wrapInFrame(answersCanvas, `${frameTitle(lesson)} — ответы`, color.answersFill)
+    }
 
-  await miro.board.viewport.zoomTo(frame)
+    await miro.board.viewport.zoomTo(frame)
 
-  return {
-    frame,
-    answersFrame,
-    itemCount: canvas.items.length + (answersCanvas?.items.length ?? 0),
+    return {
+      frame,
+      answersFrame,
+      itemCount: canvas.items.length + (answersCanvas?.items.length ?? 0),
+    }
+  } catch (error) {
+    // Урок рисуется десятками отдельных вызовов, и падение на середине
+    // оставляет на доске бессмысленную россыпь объектов, которую репетитору
+    // пришлось бы вычищать руками. Прибираем за собой и отдаём ошибку дальше.
+    await discard([...canvas.items, ...(answersCanvas?.items ?? []), frame, answersFrame])
+    throw error
+  }
+}
+
+/** Удаляет всё созданное. Ошибки удаления гасим: на уборке они уже не важны. */
+async function discard(items: (BaseItem | null)[]): Promise<void> {
+  const present = items.filter((item): item is BaseItem => item !== null)
+
+  const BATCH = 10
+  for (let index = 0; index < present.length; index += BATCH) {
+    await Promise.all(
+      present.slice(index, index + BATCH).map((item) => miro.board.remove(item).catch(() => undefined)),
+    )
   }
 }
 
@@ -126,9 +149,8 @@ async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Pr
     childrenIds: canvas.items.map((item) => item.id),
   })
 
-  // Фрейм создан последним, поэтому лежит поверх содержимого.
-  await miro.board.sendToBack(frame)
-
+  // Уводить фрейм назад не нужно и нельзя: Miro запрещает менять слой фреймов,
+  // потому что фрейм и так всегда лежит под своим содержимым.
   await ensureChildren(frame, canvas.items)
   return frame
 }
