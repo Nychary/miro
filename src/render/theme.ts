@@ -21,15 +21,21 @@ export const gap = {
   lg: 72,
 } as const
 
+/**
+ * Кегли подобраны под ширину урока в 1680 пикселей и под то, что во время
+ * занятия доска смотрится в сильном уменьшении. Мелкий текст на такой ширине
+ * даёт полторы сотни символов в строке и не читается, поэтому шкала заметно
+ * крупнее привычной экранной.
+ */
 export const font = {
   lessonTitle: 64,
-  lessonSubtitle: 26,
-  sectionTitle: 38,
-  cardTitle: 24,
-  body: 22,
-  small: 18,
-  formula: 32,
-  sticky: 20,
+  lessonSubtitle: 28,
+  sectionTitle: 44,
+  cardTitle: 32,
+  body: 30,
+  small: 24,
+  formula: 40,
+  sticky: 22,
 } as const
 
 /** Шрифт с поддержкой кириллицы из списка, который принимает Miro. */

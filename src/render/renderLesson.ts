@@ -1,7 +1,7 @@
-import type { BaseItem, Frame } from '@mirohq/websdk-types'
+import type { Frame } from '@mirohq/websdk-types'
 import type { AnswersBlock, Block, Lesson } from '../lesson/schema'
 import { renderBlock } from './blocks'
-import { Canvas, bold, escapeHtml, paragraphs } from './canvas'
+import { Canvas, bold, escapeHtml, paragraphs, type CanvasItem } from './canvas'
 import { card, section } from './composition'
 import { ANSWERS_OFFSET_X, CONTENT_WIDTH, FRAME_PADDING, color, font, gap } from './theme'
 
@@ -70,8 +70,8 @@ export async function renderLesson(lesson: Lesson): Promise<RenderResult> {
 }
 
 /** Удаляет всё созданное. Ошибки удаления гасим: на уборке они уже не важны. */
-async function discard(items: (BaseItem | null)[]): Promise<void> {
-  const present = items.filter((item): item is BaseItem => item !== null)
+async function discard(items: (CanvasItem | Frame | null)[]): Promise<void> {
+  const present = items.filter((item): item is CanvasItem | Frame => item !== null)
 
   const BATCH = 10
   for (let index = 0; index < present.length; index += BATCH) {
@@ -142,7 +142,8 @@ async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Pr
   // Подложки идут первыми: если Miro раскладывает слои по порядку детей,
   // содержимое карточек окажется поверх своих подложек, а не под ними.
   const backdropIds = new Set(canvas.backdrops.map((item) => item.id))
-  const ordered = [...canvas.backdrops, ...canvas.items.filter((item) => !backdropIds.has(item.id))]
+  const content = canvas.items.filter((item) => !backdropIds.has(item.id))
+  const ordered = [...canvas.backdrops, ...content]
 
   const frame = await miro.board.createFrame({
     title,
@@ -158,10 +159,12 @@ async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Pr
   // потому что фрейм и так всегда лежит под своим содержимым.
   await ensureChildren(frame, ordered)
 
-  // А вот подложки опускаем именно здесь, после упаковки: сделанное до неё
-  // сбрасывается, когда объекты становятся детьми фрейма.
-  if (canvas.backdrops.length > 0) {
-    await miro.board.sendToBack(canvas.backdrops)
+  // Поднимаем содержимое, а не опускаем подложки. Опускать нельзя: sendToBack
+  // отправляет в самый низ доски, то есть под заливку фрейма, и подложка
+  // становится невидимой. Поднятое содержимое оказывается над своей подложкой,
+  // а обе остаются над фреймом.
+  if (canvas.backdrops.length > 0 && content.length > 0) {
+    await miro.board.bringToFront(content)
   }
 
   return frame
@@ -172,7 +175,7 @@ async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Pr
  * нельзя: если объекты не прикрепились, урок рассыплется при перемещении фрейма.
  * Поэтому недостающие добавляются явно.
  */
-async function ensureChildren(frame: Frame, items: BaseItem[]): Promise<void> {
+async function ensureChildren(frame: Frame, items: CanvasItem[]): Promise<void> {
   const attached = new Set((await frame.getChildren()).map((child) => child.id))
   const missing = items.filter((item) => !attached.has(item.id))
   if (missing.length === 0) return
@@ -180,7 +183,7 @@ async function ensureChildren(frame: Frame, items: BaseItem[]): Promise<void> {
   const BATCH = 10
   for (let index = 0; index < missing.length; index += BATCH) {
     const batch = missing.slice(index, index + BATCH)
-    await Promise.all(batch.map((item) => frame.add(item as Parameters<Frame['add']>[0])))
+    await Promise.all(batch.map((item) => frame.add(item)))
   }
 }
 

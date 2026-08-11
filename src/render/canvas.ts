@@ -1,5 +1,4 @@
 import type {
-  BaseItem,
   FontFamily,
   Shape,
   StickyNote,
@@ -28,6 +27,13 @@ export interface Box {
   width: number
   height: number
 }
+
+/**
+ * Всё, что Canvas умеет создавать. Конкретные классы, а не общий BaseItem:
+ * методы работы со слоями и удалением принимают именно их, и без этого
+ * каждый вызов пришлось бы сопровождать приведением типа.
+ */
+export type CanvasItem = Shape | Text | StickyNote
 
 export interface TextOptions {
   /** Левый край. По умолчанию — левый край колонки. */
@@ -78,7 +84,7 @@ export interface StickyOptions {
 
 export class Canvas {
   /** Всё созданное — в порядке создания. Нужно, чтобы потом сложить во фрейм. */
-  readonly items: BaseItem[] = []
+  readonly items: CanvasItem[] = []
 
   /**
    * Подложки карточек — отдельно от остального.
@@ -297,7 +303,7 @@ export class Canvas {
 
   // -------------------------------------------------------------------------
 
-  private register(item: BaseItem, box: Box, flow: boolean, gapAfter = 0): void {
+  private register(item: CanvasItem, box: Box, flow: boolean, gapAfter = 0): void {
     this.items.push(item)
 
     this.minX = Math.min(this.minX, box.left)
