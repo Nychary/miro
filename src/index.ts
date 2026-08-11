@@ -3,5 +3,8 @@
 // приложения на левой панели доски.
 
 miro.board.ui.on('icon:click', async () => {
-  await miro.board.ui.openPanel({ url: 'app.html' })
+  // Адрес считаем от текущей страницы, а не пишем относительным: на GitHub
+  // Pages приложение лежит в подпапке с именем репозитория, и «app.html»
+  // рискует разрешиться от корня домена.
+  await miro.board.ui.openPanel({ url: new URL('app.html', window.location.href).toString() })
 })

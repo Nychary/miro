@@ -6,6 +6,10 @@ import react from '@vitejs/plugin-react'
 //   index.html — грузится самим Miro как sdkUri, вешает обработчик на иконку приложения
 //   app.html   — панель в сайдбаре, где живёт весь интерфейс
 export default defineConfig({
+  // На GitHub Pages сайт живёт не в корне домена, а в папке с именем
+  // репозитория, и без этого ссылки на скрипты и стили ведут в никуда.
+  // Локально переменная не задана, и база остаётся корневой.
+  base: process.env.BASE_PATH ?? '/',
   plugins: [react()],
   server: {
     port: 3000,
