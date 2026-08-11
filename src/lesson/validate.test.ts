@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { buildPrompt } from './prompt'
 import { ENGLISH_SAMPLE, PHYSICS_SAMPLE } from './samples'
 import { parseLessonResponse } from './validate'
 
@@ -45,6 +46,21 @@ describe('обёртка вокруг JSON', () => {
     const result = parseLessonResponse(JSON.stringify(lesson))
     if (!result.ok) throw new Error(result.errors.join('; '))
     expect(result.lesson.blocks).toHaveLength(1)
+  })
+
+  it('узнаёт собственный промпт, вставленный вместо ответа', () => {
+    const prompt = buildPrompt({
+      subject: 'physics',
+      topic: 'Закон Ома',
+      level: '8 класс',
+      durationMin: 60,
+      language: 'ru',
+    })
+    const result = parseLessonResponse(prompt)
+    if (result.ok) throw new Error('ожидалась ошибка')
+    // Промпт содержит описание схемы в фигурных скобках, поэтому без отдельной
+    // проверки разбор жалуется на синтаксис JSON и уводит не туда.
+    expect(result.errors[0]).toContain('сам промпт')
   })
 
   it('жалуется на пустой ввод', () => {

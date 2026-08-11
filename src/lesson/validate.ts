@@ -1,3 +1,4 @@
+import { looksLikePrompt } from './prompt'
 import type { Block, GapFillBlock, Lesson, TasksBlock } from './schema'
 import { GAP_MARKER } from './schema'
 
@@ -22,6 +23,15 @@ export type ParseResult =
 export function parseLessonResponse(raw: string): ParseResult {
   if (!raw.trim()) {
     return { ok: false, errors: ['Пустой ответ — вставьте то, что выдала нейросеть.'] }
+  }
+
+  if (looksLikePrompt(raw)) {
+    return {
+      ok: false,
+      errors: [
+        'Это сам промпт, а не ответ. Вставьте его в чат с нейросетью, а сюда — то, что она ответит.',
+      ],
+    }
   }
 
   const json = extractJsonObject(raw)

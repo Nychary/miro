@@ -241,6 +241,27 @@ button.primary:hover:not(:disabled) {
   margin-bottom: 3px;
 }
 
+/*
+ * Свёрнутый details обязан прятать содержимое. Браузер делает это сам, но
+ * `display: block` на textarea выше перебивает встроенное правило, и поле
+ * остаётся на экране — ровно та вторая рамка, ради исчезновения которой всё
+ * и затевалось.
+ */
+details:not([open]) > *:not(summary) {
+  display: none;
+}
+
+summary.reveal {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+summary.reveal + textarea {
+  margin-top: 8px;
+}
+
 /* --- Образцы ----------------------------------------------------------- */
 
 .samples summary {

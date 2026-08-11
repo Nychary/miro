@@ -29,6 +29,7 @@ export function App() {
 
   const [prompt, setPrompt] = useState('')
   const [copied, setCopied] = useState(false)
+  const [promptOpen, setPromptOpen] = useState(false)
   const [answer, setAnswer] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
@@ -79,9 +80,10 @@ export function App() {
       setCopied(true)
     } catch {
       // Панель живёт во фрейме Miro, и доступ к буферу там может быть закрыт.
-      // Тогда выделяем текст, чтобы осталось нажать Ctrl+C.
-      promptRef.current?.select()
+      // Тогда раскрываем промпт и выделяем текст, чтобы осталось нажать Ctrl+C.
+      setPromptOpen(true)
       setCopied(false)
+      requestAnimationFrame(() => promptRef.current?.select())
     }
   }
 
@@ -202,10 +204,18 @@ export function App() {
           <p className="hint-line">
             Скопируйте промпт, вставьте в любой чат с нейросетью и скопируйте её ответ целиком.
           </p>
-          <textarea className="mono" rows={6} readOnly value={prompt} ref={promptRef} />
-          <button type="button" onClick={() => void copyPrompt()}>
+          <button type="button" className="primary" onClick={() => void copyPrompt()}>
             {copied ? 'Скопировано' : 'Скопировать промпт'}
           </button>
+          {/*
+            Промпт свёрнут намеренно. Промпт и ответ ходят через один буфер
+            обмена, и два одинаковых поля подряд провоцируют вставить промпт
+            туда, где ждут ответ. Видимое поле должно быть ровно одно.
+          */}
+          <details open={promptOpen} onToggle={(event) => setPromptOpen(event.currentTarget.open)}>
+            <summary className="reveal">Показать промпт</summary>
+            <textarea className="mono" rows={6} readOnly value={prompt} ref={promptRef} />
+          </details>
         </section>
       )}
 

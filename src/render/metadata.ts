@@ -1,15 +1,29 @@
-import type { BaseItem } from '@mirohq/websdk-types'
+import type { BaseItem, Frame } from '@mirohq/websdk-types'
 
 /**
- * Метаданные, которые рендерер вешает на объекты интерактивных заданий.
+ * Разметка интерактивных заданий на доске.
  *
- * Благодаря им кнопка «Проверить» работает единообразно для всех типов
- * упражнений: она берёт каждую зону, ищет лежащую в ней карточку и сравнивает
- * `chip.value` с `zone.expected`. Сравнение идёт по тексту, а не по номеру
- * ячейки, поэтому повторяющиеся варианты ответа не ломают проверку.
+ * Проверка устроена единообразно для всех типов упражнений: у каждой зоны есть
+ * ожидаемый текст, у каждой карточки — свой, и совпадение проверяется по
+ * тексту, а не по номеру ячейки. Поэтому повторяющиеся варианты ответа
+ * (два пропуска с одним и тем же словом) не ломают проверку.
+ *
+ * Данные лежат в двух местах, и это не дублирование:
+ *
+ * — На самих объектах — чтобы объект оставался понятным сам по себе: если
+ *   репетитор перетащит карточку в другой урок, будет видно, откуда она.
+ * — На фрейме урока — как указатель: какие объекты вообще участвуют в
+ *   проверке. Без него пришлось бы опрашивать метаданные у всех ста с лишним
+ *   объектов урока, а так хватает одного чтения и одного запроса по списку
+ *   идентификаторов.
  */
 
 export const METADATA_KEY = 'lessonBuilder'
+export const EXERCISES_KEY = 'lessonExercises'
+
+// ---------------------------------------------------------------------------
+// Метки на объектах
+// ---------------------------------------------------------------------------
 
 export interface ZoneMeta {
   role: 'zone'
@@ -28,13 +42,47 @@ export interface ChipMeta {
 
 export type ItemMeta = ZoneMeta | ChipMeta
 
+type MetadataValue = Parameters<BaseItem['setMetadata']>[1]
+
 export async function tagItem(item: BaseItem, meta: ItemMeta): Promise<void> {
-  await item.setMetadata(METADATA_KEY, meta as unknown as Parameters<BaseItem['setMetadata']>[1])
+  await item.setMetadata(METADATA_KEY, meta as unknown as MetadataValue)
 }
 
-export async function readItemMeta(item: BaseItem): Promise<ItemMeta | null> {
-  const raw = await item.getMetadata(METADATA_KEY)
+// ---------------------------------------------------------------------------
+// Указатель на фрейме урока
+// ---------------------------------------------------------------------------
+
+export interface ZoneRecord {
+  id: string
+  expected: string
+}
+
+export interface ChipRecord {
+  id: string
+  value: string
+}
+
+export interface ExerciseRecord {
+  ref: string
+  /** Заголовок секции — чтобы отчёт о проверке был понятен без доски. */
+  title: string
+  zones: ZoneRecord[]
+  chips: ChipRecord[]
+}
+
+export interface LessonExercises {
+  topic: string
+  exercises: ExerciseRecord[]
+}
+
+export async function saveExercises(frame: Frame, data: LessonExercises): Promise<void> {
+  await frame.setMetadata(EXERCISES_KEY, data as unknown as MetadataValue)
+}
+
+export async function loadExercises(frame: Frame): Promise<LessonExercises | null> {
+  const raw = await frame.getMetadata(EXERCISES_KEY)
   if (!raw || typeof raw !== 'object') return null
-  const meta = raw as unknown as ItemMeta
-  return meta.role === 'zone' || meta.role === 'chip' ? meta : null
+
+  const data = raw as unknown as LessonExercises
+  return Array.isArray(data.exercises) ? data : null
 }
