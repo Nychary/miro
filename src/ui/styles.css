@@ -32,12 +32,16 @@ h1 {
   font-size: 13px;
 }
 
-.group {
+/* --- Шаги -------------------------------------------------------------- */
+
+.step {
   margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
 }
 
-.group-label {
-  margin-bottom: 8px;
+.step-label {
+  margin-bottom: 12px;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -45,10 +49,108 @@ h1 {
   color: var(--muted);
 }
 
+.hint-line {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* --- Поля -------------------------------------------------------------- */
+
+label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.optional {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+input,
+select,
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  background: #fff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+textarea {
+  resize: vertical;
+}
+
+textarea.mono {
+  margin-bottom: 8px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.row label:first-child {
+  flex: 1;
+}
+
+.row label:last-child {
+  width: 88px;
+}
+
+/* --- Переключатель предмета -------------------------------------------- */
+
+.segmented {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.segmented button {
+  flex: 1;
+  margin: 0;
+  padding: 7px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  text-align: center;
+  color: var(--muted);
+}
+
+.segmented button.active {
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* --- Кнопки ------------------------------------------------------------ */
+
 button {
   display: block;
   width: 100%;
-  margin-bottom: 8px;
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -66,16 +168,25 @@ button:hover:not(:disabled) {
 
 button:disabled {
   opacity: 0.5;
-  cursor: progress;
+  cursor: not-allowed;
 }
 
-button .hint {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
 }
+
+button.primary:hover:not(:disabled) {
+  background: #3550e0;
+}
+
+/* --- Статус ------------------------------------------------------------ */
 
 .status {
+  margin-bottom: 20px;
   padding: 10px 12px;
   border-radius: 8px;
   background: var(--surface);
@@ -83,15 +194,38 @@ button .hint {
   white-space: pre-wrap;
 }
 
+.status.done {
+  background: #eefaf3;
+}
+
 .status.error {
   background: #fdeeee;
   color: #a11;
 }
 
-.note {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+.status-heading {
+  margin: 8px 0 4px;
+  font-weight: 600;
+}
+
+.status ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.status li {
+  margin-bottom: 3px;
+}
+
+/* --- Образцы ----------------------------------------------------------- */
+
+.samples summary {
   color: var(--muted);
   font-size: 12px;
+  cursor: pointer;
+}
+
+.samples button {
+  margin-top: 8px;
+  font-size: 13px;
 }

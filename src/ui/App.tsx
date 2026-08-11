@@ -1,59 +1,240 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { buildPrompt, type LessonRequest } from '../lesson/prompt'
 import { SAMPLES } from '../lesson/samples'
-import type { Lesson } from '../lesson/schema'
+import type { Lesson, Subject } from '../lesson/schema'
+import { parseLessonResponse } from '../lesson/validate'
 import { renderLesson } from '../render/renderLesson'
 
-type Status = { kind: 'idle' | 'busy' | 'done' | 'error'; message: string }
+const DEFAULT_LEVEL: Record<Subject, string> = {
+  physics: '8 класс',
+  english: 'B1',
+}
 
-const IDLE: Status = { kind: 'idle', message: '' }
+type Status =
+  | { kind: 'idle' }
+  | { kind: 'busy'; message: string }
+  | { kind: 'done'; message: string; warnings: string[] }
+  | { kind: 'error'; errors: string[] }
 
 export function App() {
-  const [status, setStatus] = useState<Status>(IDLE)
+  const [subject, setSubject] = useState<Subject>('physics')
+  const [topic, setTopic] = useState('')
+  const [level, setLevel] = useState(DEFAULT_LEVEL.physics)
+  const [durationMin, setDurationMin] = useState(60)
+  const [student, setStudent] = useState('')
+  const [studentNotes, setStudentNotes] = useState('')
+
+  const [prompt, setPrompt] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [answer, setAnswer] = useState('')
+  const [status, setStatus] = useState<Status>({ kind: 'idle' })
+
+  const promptRef = useRef<HTMLTextAreaElement>(null)
   const busy = status.kind === 'busy'
 
-  async function draw(lesson: Lesson) {
+  function changeSubject(next: Subject) {
+    // Уровень меняем только если репетитор его не трогал: «8 класс» для
+    // английского и «B1» для физики одинаково бессмысленны.
+    if (level === DEFAULT_LEVEL[subject]) setLevel(DEFAULT_LEVEL[next])
+    setSubject(next)
+    setPrompt('')
+  }
+
+  function makePrompt() {
+    const request: LessonRequest = {
+      subject,
+      topic: topic.trim(),
+      level: level.trim(),
+      durationMin,
+      language: 'ru',
+      ...(student.trim() ? { student: student.trim() } : {}),
+      ...(studentNotes.trim() ? { studentNotes: studentNotes.trim() } : {}),
+    }
+    setPrompt(buildPrompt(request))
+    setCopied(false)
+    setStatus({ kind: 'idle' })
+  }
+
+  async function copyPrompt() {
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setCopied(true)
+    } catch {
+      // Панель живёт во фрейме Miro, и доступ к буферу там может быть закрыт.
+      // Тогда выделяем текст, чтобы осталось нажать Ctrl+C.
+      promptRef.current?.select()
+      setCopied(false)
+    }
+  }
+
+  async function draw(lesson: Lesson, warnings: string[] = []) {
     setStatus({ kind: 'busy', message: `Рисую урок «${lesson.meta.topic}»…` })
     try {
       const result = await renderLesson(lesson)
       setStatus({
         kind: 'done',
         message: `Готово: ${result.itemCount} объектов${result.answersFrame ? ', ответы в отдельном фрейме справа' : ''}.`,
+        warnings,
       })
     } catch (error) {
       setStatus({
         kind: 'error',
-        message: error instanceof Error ? error.message : 'Не удалось нарисовать урок',
+        errors: [error instanceof Error ? error.message : 'Не удалось нарисовать урок'],
       })
     }
   }
+
+  function drawFromAnswer() {
+    const parsed = parseLessonResponse(answer)
+    if (!parsed.ok) {
+      setStatus({ kind: 'error', errors: parsed.errors })
+      return
+    }
+    void draw(parsed.lesson, parsed.warnings)
+  }
+
+  const canBuild = topic.trim().length > 0 && level.trim().length > 0
 
   return (
     <>
       <h1>Конструктор уроков</h1>
       <p className="subtitle">Собирает урок на доске: теория, задания и ответы.</p>
 
-      <div className="group">
-        <div className="group-label">Образцы для проверки вёрстки</div>
+      <section className="step">
+        <div className="step-label">Шаг 1 — про урок</div>
 
-        <button type="button" disabled={busy} onClick={() => void draw(SAMPLES.physics)}>
-          Физика: закон Ома
-          <span className="hint">8 класс · теория, формулы, 6 задач, два интерактива</span>
+        <div className="segmented">
+          <button
+            type="button"
+            className={subject === 'physics' ? 'active' : ''}
+            onClick={() => changeSubject('physics')}
+          >
+            Физика
+          </button>
+          <button
+            type="button"
+            className={subject === 'english' ? 'active' : ''}
+            onClick={() => changeSubject('english')}
+          >
+            Английский
+          </button>
+        </div>
+
+        <label>
+          Тема
+          <input
+            value={topic}
+            onChange={(event) => setTopic(event.target.value)}
+            placeholder={subject === 'physics' ? 'Закон Ома для участка цепи' : 'Past Simple: рассказ о поездке'}
+          />
+        </label>
+
+        <div className="row">
+          <label>
+            Уровень
+            <input value={level} onChange={(event) => setLevel(event.target.value)} />
+          </label>
+          <label>
+            Минут
+            <select value={durationMin} onChange={(event) => setDurationMin(Number(event.target.value))}>
+              <option value={45}>45</option>
+              <option value={60}>60</option>
+              <option value={90}>90</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Ученик <span className="optional">необязательно</span>
+          <input value={student} onChange={(event) => setStudent(event.target.value)} placeholder="Пётр" />
+        </label>
+
+        <label>
+          Что учесть <span className="optional">необязательно</span>
+          <textarea
+            rows={3}
+            value={studentNotes}
+            onChange={(event) => setStudentNotes(event.target.value)}
+            placeholder="Путает последовательное и параллельное соединение. Готовимся к ОГЭ."
+          />
+        </label>
+
+        <button type="button" className="primary" disabled={!canBuild} onClick={makePrompt}>
+          Собрать промпт
         </button>
+        {!canBuild && <p className="hint-line">Заполните тему и уровень.</p>}
+      </section>
 
-        <button type="button" disabled={busy} onClick={() => void draw(SAMPLES.english)}>
-          Английский: Past Simple
-          <span className="hint">B1 · грамматика, лексика, три интерактива</span>
-        </button>
-      </div>
-
-      {status.message && (
-        <div className={status.kind === 'error' ? 'status error' : 'status'}>{status.message}</div>
+      {prompt && (
+        <section className="step">
+          <div className="step-label">Шаг 2 — отдайте нейросети</div>
+          <p className="hint-line">
+            Скопируйте промпт, вставьте в любой чат с нейросетью и скопируйте её ответ целиком.
+          </p>
+          <textarea className="mono" rows={6} readOnly value={prompt} ref={promptRef} />
+          <button type="button" onClick={() => void copyPrompt()}>
+            {copied ? 'Скопировано' : 'Скопировать промпт'}
+          </button>
+        </section>
       )}
 
-      <p className="note">
-        Генерация по произвольной теме появится, когда подключим нейросеть. Пока эти два урока служат
-        образцом: по ним видно, как раскладка ведёт себя на реальных текстах.
-      </p>
+      <section className="step">
+        <div className="step-label">Шаг 3 — верните ответ</div>
+        <textarea
+          className="mono"
+          rows={6}
+          value={answer}
+          onChange={(event) => setAnswer(event.target.value)}
+          placeholder="Вставьте сюда ответ нейросети"
+        />
+        <button
+          type="button"
+          className="primary"
+          disabled={busy || !answer.trim()}
+          onClick={drawFromAnswer}
+        >
+          Нарисовать урок
+        </button>
+      </section>
+
+      {status.kind === 'busy' && <div className="status">{status.message}</div>}
+
+      {status.kind === 'done' && (
+        <div className="status done">
+          {status.message}
+          {status.warnings.length > 0 && (
+            <>
+              <div className="status-heading">Стоит проверить перед занятием:</div>
+              <ul>
+                {status.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {status.kind === 'error' && (
+        <div className="status error">
+          <div className="status-heading">Не получилось разобрать ответ:</div>
+          <ul>
+            {status.errors.map((error) => (
+              <li key={error}>{error}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <details className="samples">
+        <summary>Образцы для проверки вёрстки</summary>
+        <button type="button" disabled={busy} onClick={() => void draw(SAMPLES.physics)}>
+          Физика: закон Ома
+        </button>
+        <button type="button" disabled={busy} onClick={() => void draw(SAMPLES.english)}>
+          Английский: Past Simple
+        </button>
+      </details>
     </>
   )
 }

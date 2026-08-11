@@ -8,7 +8,8 @@
     "dev": "vite --port 3000",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 3000",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "license": "UNLICENSED",
   "dependencies": {
@@ -22,6 +23,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "typescript": "^7.0.2",
-    "vite": "^8.2.1"
+    "vite": "^8.2.1",
+    "vitest": "^3.2.7"
   }
 }
