@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { buildPrompt, type LessonRequest } from '../lesson/prompt'
 import { SAMPLES } from '../lesson/samples'
 import type { Lesson, Subject } from '../lesson/schema'
@@ -30,7 +30,22 @@ export function App() {
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
   const promptRef = useRef<HTMLTextAreaElement>(null)
+  const promptSectionRef = useRef<HTMLElement>(null)
+  const statusRef = useRef<HTMLDivElement>(null)
   const busy = status.kind === 'busy'
+
+  // Панель в Miro — узкая колонка с прокруткой, и всё новое появляется ниже
+  // текущего экрана. Без этого нажатие на кнопку выглядит как «ничего не
+  // произошло»: результат есть, но его не видно.
+  useEffect(() => {
+    if (prompt) promptSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [prompt])
+
+  useEffect(() => {
+    if (status.kind === 'done' || status.kind === 'error') {
+      statusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [status])
 
   function changeSubject(next: Subject) {
     // Уровень меняем только если репетитор его не трогал: «8 класс» для
@@ -120,12 +135,17 @@ export function App() {
           </button>
         </div>
 
+        {/*
+          Подсказки начинаются с «например» намеренно. Реалистичное значение
+          серым текстом выглядит как заполненное поле — и тогда неактивная
+          кнопка ниже воспринимается как сломанная, а не как «заполни тему».
+        */}
         <label>
           Тема
           <input
             value={topic}
             onChange={(event) => setTopic(event.target.value)}
-            placeholder={subject === 'physics' ? 'Закон Ома для участка цепи' : 'Past Simple: рассказ о поездке'}
+            placeholder={subject === 'physics' ? 'например, Закон Ома' : 'например, Past Simple'}
           />
         </label>
 
@@ -146,7 +166,11 @@ export function App() {
 
         <label>
           Ученик <span className="optional">необязательно</span>
-          <input value={student} onChange={(event) => setStudent(event.target.value)} placeholder="Пётр" />
+          <input
+            value={student}
+            onChange={(event) => setStudent(event.target.value)}
+            placeholder="например, Пётр"
+          />
         </label>
 
         <label>
@@ -159,14 +183,17 @@ export function App() {
           />
         </label>
 
+        {/* Подсказка стоит над кнопкой, а не под ней: панель узкая, и всё,
+            что ниже кнопки, оказывается за краем экрана — ровно там, где
+            объяснение уже никому не поможет. */}
+        {!canBuild && <p className="hint-line required">Сначала заполните тему и уровень.</p>}
         <button type="button" className="primary" disabled={!canBuild} onClick={makePrompt}>
           Собрать промпт
         </button>
-        {!canBuild && <p className="hint-line">Заполните тему и уровень.</p>}
       </section>
 
       {prompt && (
-        <section className="step">
+        <section className="step" ref={promptSectionRef}>
           <div className="step-label">Шаг 2 — отдайте нейросети</div>
           <p className="hint-line">
             Скопируйте промпт, вставьте в любой чат с нейросетью и скопируйте её ответ целиком.
@@ -200,7 +227,7 @@ export function App() {
       {status.kind === 'busy' && <div className="status">{status.message}</div>}
 
       {status.kind === 'done' && (
-        <div className="status done">
+        <div className="status done" ref={statusRef}>
           {status.message}
           {status.warnings.length > 0 && (
             <>
@@ -216,7 +243,7 @@ export function App() {
       )}
 
       {status.kind === 'error' && (
-        <div className="status error">
+        <div className="status error" ref={statusRef}>
           <div className="status-heading">Не получилось разобрать ответ:</div>
           <ul>
             {status.errors.map((error) => (
