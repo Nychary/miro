@@ -80,6 +80,17 @@ export class Canvas {
   /** Всё созданное — в порядке создания. Нужно, чтобы потом сложить во фрейм. */
   readonly items: BaseItem[] = []
 
+  /**
+   * Подложки карточек — отдельно от остального.
+   *
+   * Подложка создаётся после своего содержимого, потому что до этого неизвестна
+   * её высота, и потому оказывается поверх текста. Разложить слои один раз при
+   * создании не выйдет: когда объекты складываются во фрейм, порядок слоёв
+   * восстанавливается по порядку детей. Поэтому подложки приходится помнить и
+   * опускать вниз уже после упаковки во фрейм.
+   */
+  readonly backdrops: Shape[] = []
+
   private readonly columnLeft: number
   private readonly columnWidth: number
   private cursor: number
@@ -150,6 +161,7 @@ export class Canvas {
     const box = child.bbox()
 
     this.items.push(...child.items)
+    this.backdrops.push(...child.backdrops)
     this.minX = Math.min(this.minX, box.left)
     this.minY = Math.min(this.minY, box.top)
     this.maxX = Math.max(this.maxX, box.left + box.width)
@@ -279,7 +291,7 @@ export class Canvas {
       borderColor: style.borderColor,
       flow: false,
     })
-    await miro.board.sendToBack(item)
+    this.backdrops.push(item)
     return item
   }
 

@@ -139,6 +139,11 @@ async function renderAnswersAside(block: AnswersBlock, origin: { left: number; t
 async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Promise<Frame> {
   const box = canvas.bbox()
 
+  // Подложки идут первыми: если Miro раскладывает слои по порядку детей,
+  // содержимое карточек окажется поверх своих подложек, а не под ними.
+  const backdropIds = new Set(canvas.backdrops.map((item) => item.id))
+  const ordered = [...canvas.backdrops, ...canvas.items.filter((item) => !backdropIds.has(item.id))]
+
   const frame = await miro.board.createFrame({
     title,
     x: box.left + box.width / 2,
@@ -146,12 +151,19 @@ async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Pr
     width: box.width + FRAME_PADDING * 2,
     height: box.height + FRAME_PADDING * 2,
     style: { fillColor },
-    childrenIds: canvas.items.map((item) => item.id),
+    childrenIds: ordered.map((item) => item.id),
   })
 
   // Уводить фрейм назад не нужно и нельзя: Miro запрещает менять слой фреймов,
   // потому что фрейм и так всегда лежит под своим содержимым.
-  await ensureChildren(frame, canvas.items)
+  await ensureChildren(frame, ordered)
+
+  // А вот подложки опускаем именно здесь, после упаковки: сделанное до неё
+  // сбрасывается, когда объекты становятся детьми фрейма.
+  if (canvas.backdrops.length > 0) {
+    await miro.board.sendToBack(canvas.backdrops)
+  }
+
   return frame
 }
 
