@@ -77,6 +77,16 @@ h1 {
   font-size: 12px;
 }
 
+/* Пояснение под названием кнопки. Без display: block оно слипается с
+   названием в одну строку. */
+button .hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .hint-line.required {
   margin: 0 0 8px;
   color: #a11;
