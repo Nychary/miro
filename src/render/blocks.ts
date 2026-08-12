@@ -371,7 +371,9 @@ async function renderChipPool(
       fillColor: sticky.draggable,
     })
     await tagItem(note, { role: 'chip', exercise, value: chip.value })
-    records.push({ id: note.id, value: chip.value })
+    // Координаты запоминаем до упаковки во фрейм — сейчас они ещё в системе
+    // доски, а у ребёнка фрейма будут отсчитываться от него.
+    records.push({ id: note.id, value: chip.value, homeX: note.x, homeY: note.y })
     return note.height
   })
 

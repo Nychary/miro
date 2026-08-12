@@ -70,6 +70,14 @@ export interface ZoneRecord {
 export interface ChipRecord {
   id: string
   value: string
+  /**
+   * Где карточка лежала сразу после отрисовки, в координатах доски.
+   *
+   * Нужно, чтобы разложить карточки обратно: без этого урок одноразовый —
+   * после первого ученика задание уже решено, и повторить его не с чем.
+   */
+  homeX: number
+  homeY: number
 }
 
 export interface ExerciseRecord {
