@@ -51,11 +51,11 @@ export async function renderLesson(lesson: Lesson): Promise<RenderResult> {
 
     frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill)
 
-    // Указатель на интерактивные задания живёт на фрейме урока: он исчезает
-    // вместе с уроком и позволяет проверке найти нужные объекты одним
-    // запросом вместо перебора сотни элементов.
+    // Указатель на интерактивные задания живёт в хранилище приложения на
+    // доске: он позволяет проверке найти нужные объекты одним запросом вместо
+    // перебора сотни элементов урока.
     if (canvas.exercises.length > 0) {
-      await saveExercises(frame, { topic: lesson.meta.topic, exercises: canvas.exercises })
+      await saveExercises({ frameId: frame.id, topic: lesson.meta.topic, exercises: canvas.exercises })
     }
 
     if (answersCanvas && !answersCanvas.isEmpty) {

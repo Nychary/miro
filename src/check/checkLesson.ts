@@ -42,7 +42,7 @@ interface Positioned {
 }
 
 export async function checkLesson(frame: Frame): Promise<CheckResult> {
-  const data = await loadExercises(frame)
+  const data = await loadExercises(frame.id)
   if (!data || data.exercises.length === 0) {
     throw new Error('В этом уроке нет заданий с проверкой.')
   }
