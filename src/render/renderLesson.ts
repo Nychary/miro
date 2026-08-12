@@ -3,6 +3,7 @@ import type { AnswersBlock, Block, Lesson } from '../lesson/schema'
 import { renderBlock } from './blocks'
 import { Canvas, bold, escapeHtml, paragraphs, type CanvasItem } from './canvas'
 import { card, section } from './composition'
+import { saveExercises } from './metadata'
 import { ANSWERS_OFFSET_X, CONTENT_WIDTH, FRAME_PADDING, color, font, gap } from './theme'
 
 export interface RenderResult {
@@ -49,6 +50,14 @@ export async function renderLesson(lesson: Lesson): Promise<RenderResult> {
     }
 
     frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill)
+
+    // Указатель на интерактивные задания живёт на фрейме урока: он исчезает
+    // вместе с уроком и позволяет проверке найти нужные объекты одним
+    // запросом вместо перебора сотни элементов.
+    if (canvas.exercises.length > 0) {
+      await saveExercises(frame, { topic: lesson.meta.topic, exercises: canvas.exercises })
+    }
+
     if (answersCanvas && !answersCanvas.isEmpty) {
       answersFrame = await wrapInFrame(answersCanvas, `${frameTitle(lesson)} — ответы`, color.answersFill)
     }

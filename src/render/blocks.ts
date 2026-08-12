@@ -19,7 +19,7 @@ import type {
 import { GAP_MARKER, titleFor } from '../lesson/schema'
 import { Canvas, bold, bullets, escapeHtml, numbered, paragraphs } from './canvas'
 import { card, cellWidth, dropZone, grid, rows, section, shuffle } from './composition'
-import { tagItem } from './metadata'
+import { tagItem, type ChipRecord, type ZoneRecord } from './metadata'
 import { color, font, gap, size, sticky } from './theme'
 
 /**
@@ -335,35 +335,47 @@ async function renderSpeaking(canvas: Canvas, block: SpeakingBlock, title: strin
 // Интерактивные задания
 // ---------------------------------------------------------------------------
 
-/** Пул перетаскиваемых карточек под заданием. Порядок перемешан. */
-async function renderChipPool(canvas: Canvas, exercise: string, values: string[]): Promise<void> {
+/**
+ * Пул перетаскиваемых карточек под заданием. Порядок перемешан.
+ *
+ * `label` — то, что видит ученик, `value` — то, с чем сверяется зона. Обычно
+ * они совпадают, но в сортировке на карточке написан элемент, а правильным
+ * ответом считается название группы, куда он должен лечь.
+ */
+async function renderChipPool(
+  canvas: Canvas,
+  exercise: string,
+  chips: { label: string; value: string }[],
+  caption: string,
+): Promise<ChipRecord[]> {
   canvas.advance(gap.md)
-  await canvas.text(bold('Карточки — перетащи в нужное место'), {
+  await canvas.text(bold(caption), {
     size: font.small,
     color: color.muted,
     gapAfter: gap.xs,
   })
 
   const perRow = Math.max(1, Math.floor(canvas.width / (size.chipWidth + gap.sm)))
+  const records: ChipRecord[] = []
 
-  await grid(
-    canvas,
-    values.length,
-    { columns: perRow, cellWidth: size.chipWidth },
-    async (index, left, top) => {
-      const value = values[index] ?? ''
-      const chip = await canvas.sticky({
-        left,
-        top,
-        width: size.chipWidth,
-        shape: 'rectangle',
-        content: escapeHtml(value),
-        fillColor: sticky.draggable,
-      })
-      await tagItem(chip, { role: 'chip', exercise, value })
-      return chip.height
-    },
-  )
+  await grid(canvas, chips.length, { columns: perRow, cellWidth: size.chipWidth }, async (index, left, top) => {
+    const chip = chips[index]
+    if (!chip) return 0
+
+    const note = await canvas.sticky({
+      left,
+      top,
+      width: size.chipWidth,
+      shape: 'rectangle',
+      content: escapeHtml(chip.label),
+      fillColor: sticky.draggable,
+    })
+    await tagItem(note, { role: 'chip', exercise, value: chip.value })
+    records.push({ id: note.id, value: chip.value })
+    return note.height
+  })
+
+  return records
 }
 
 async function renderMatching(canvas: Canvas, block: MatchingBlock, title: string): Promise<void> {
@@ -373,6 +385,7 @@ async function renderMatching(canvas: Canvas, block: MatchingBlock, title: strin
   const labelWidth = canvas.width * 0.45
   const zoneLeft = canvas.left + labelWidth + gap.sm
   const zoneWidth = canvas.width - labelWidth - gap.sm
+  const zones: ZoneRecord[] = []
 
   for (const pair of block.pairs) {
     const top = canvas.top
@@ -395,10 +408,18 @@ async function renderMatching(canvas: Canvas, block: MatchingBlock, title: strin
     ])
 
     await tagItem(zone, { role: 'zone', exercise: block.ref, expected: pair.right })
+    zones.push({ id: zone.id, expected: pair.right })
     canvas.top = top + height + gap.sm
   }
 
-  await renderChipPool(canvas, block.ref, shuffle(block.pairs.map((pair) => pair.right)))
+  const chips = await renderChipPool(
+    canvas,
+    block.ref,
+    shuffle(block.pairs.map((pair) => ({ label: pair.right, value: pair.right }))),
+    'Карточки — перетащи к нужной паре',
+  )
+
+  canvas.exercises.push({ ref: block.ref, title, zones, chips })
 }
 
 async function renderSorting(canvas: Canvas, block: SortingBlock, title: string): Promise<void> {
@@ -415,7 +436,7 @@ async function renderSorting(canvas: Canvas, block: SortingBlock, title: string)
   const zoneHeight = Math.max(240, maxItems * (size.chipHeight + gap.xs) + gap.md)
   const top = canvas.top
 
-  await Promise.all(
+  const zones = await Promise.all(
     block.groups.map(async (group, index) => {
       const left = canvas.left + index * (groupWidth + gap.sm)
 
@@ -438,40 +459,24 @@ async function renderSorting(canvas: Canvas, block: SortingBlock, title: string)
         height: zoneHeight,
       })
       await tagItem(zone, { role: 'zone', exercise: block.ref, expected: group.name })
+      return { id: zone.id, expected: group.name }
     }),
   )
 
   canvas.top = top + headerHeight + gap.xs + zoneHeight
 
-  // Карточки подписаны своим текстом, а ожидаемая группа хранится в метаданных
-  // каждой карточки — зона знает только своё имя.
-  const chips = shuffle(
-    block.groups.flatMap((group) => group.items.map((item) => ({ value: item, group: group.name }))),
+  // На карточке написан элемент, а правильным ответом считается название
+  // группы, куда он должен лечь. Поэтому подпись и значение здесь расходятся.
+  const chips = await renderChipPool(
+    canvas,
+    block.ref,
+    shuffle(
+      block.groups.flatMap((group) => group.items.map((item) => ({ label: item, value: group.name }))),
+    ),
+    'Карточки — перетащи в нужную группу',
   )
 
-  canvas.advance(gap.md)
-  await canvas.text(bold('Карточки — перетащи в нужную группу'), {
-    size: font.small,
-    color: color.muted,
-    gapAfter: gap.xs,
-  })
-
-  const perRow = Math.max(1, Math.floor(canvas.width / (size.chipWidth + gap.sm)))
-  await grid(canvas, chips.length, { columns: perRow, cellWidth: size.chipWidth }, async (index, left, chipTop) => {
-    const chip = chips[index]
-    if (!chip) return 0
-
-    const note = await canvas.sticky({
-      left,
-      top: chipTop,
-      width: size.chipWidth,
-      shape: 'rectangle',
-      content: escapeHtml(chip.value),
-      fillColor: sticky.draggable,
-    })
-    await tagItem(note, { role: 'chip', exercise: block.ref, value: chip.group })
-    return note.height
-  })
+  canvas.exercises.push({ ref: block.ref, title, zones, chips })
 }
 
 async function renderGapFill(canvas: Canvas, block: GapFillBlock, title: string): Promise<void> {
@@ -481,6 +486,7 @@ async function renderGapFill(canvas: Canvas, block: GapFillBlock, title: string)
   const textWidth = canvas.width * 0.55
   const zonesLeft = canvas.left + textWidth + gap.md
   const zonesWidth = canvas.width - textWidth - gap.md
+  const zoneRecords: ZoneRecord[] = []
 
   for (const [index, sentence] of block.sentences.entries()) {
     const top = canvas.top
@@ -506,14 +512,26 @@ async function renderGapFill(canvas: Canvas, block: GapFillBlock, title: string)
     )
 
     await Promise.all(
-      zones.map((zone, slot) =>
-        tagItem(zone, { role: 'zone', exercise: block.ref, expected: sentence.answers[slot] ?? '' }),
-      ),
+      zones.map((zone, slot) => {
+        const expected = sentence.answers[slot] ?? ''
+        zoneRecords.push({ id: zone.id, expected })
+        return tagItem(zone, { role: 'zone', exercise: block.ref, expected })
+      }),
     )
 
     canvas.top = top + Math.max(line.height, size.dropZoneHeight) + gap.sm
   }
 
+  // Лишние варианты нужны, чтобы задание нельзя было решить методом исключения.
+  // В проверке они ведут себя сами собой: ни одна зона их не ждёт, поэтому
+  // положенная в пропуск лишняя карточка окажется ошибкой.
   const answers = block.sentences.flatMap((sentence) => sentence.answers)
-  await renderChipPool(canvas, block.ref, shuffle([...answers, ...(block.distractors ?? [])]))
+  const chips = await renderChipPool(
+    canvas,
+    block.ref,
+    shuffle([...answers, ...(block.distractors ?? [])].map((value) => ({ label: value, value }))),
+    'Карточки — перетащи в пропуск',
+  )
+
+  canvas.exercises.push({ ref: block.ref, title, zones: zoneRecords, chips })
 }

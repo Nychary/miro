@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { checkLesson, type CheckResult } from '../check/checkLesson'
+import { findLessonToCheck } from '../check/findLesson'
 import { buildPrompt, type LessonRequest } from '../lesson/prompt'
 import { SAMPLES } from '../lesson/samples'
 import type { Lesson, Subject } from '../lesson/schema'
@@ -14,6 +16,7 @@ type Status =
   | { kind: 'idle' }
   | { kind: 'busy'; message: string }
   | { kind: 'done'; message: string; warnings: string[] }
+  | { kind: 'checked'; result: CheckResult }
   // Заголовок хранится вместе с ошибками: разбор ответа и отрисовка падают
   // по разным причинам, и сваливать их под одну подпись — значит посылать
   // искать проблему не там.
@@ -100,6 +103,28 @@ export function App() {
       setStatus({
         kind: 'error',
         heading: 'Не получилось нарисовать урок:',
+        errors: [error instanceof Error ? error.message : 'Неизвестная ошибка Miro'],
+      })
+    }
+  }
+
+  async function check() {
+    setStatus({ kind: 'busy', message: 'Проверяю задания…' })
+    try {
+      const frame = await findLessonToCheck()
+      if (!frame) {
+        setStatus({
+          kind: 'error',
+          heading: 'Нечего проверять:',
+          errors: ['На доске нет уроков с интерактивными заданиями.'],
+        })
+        return
+      }
+      setStatus({ kind: 'checked', result: await checkLesson(frame) })
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        heading: 'Не получилось проверить:',
         errors: [error instanceof Error ? error.message : 'Неизвестная ошибка Miro'],
       })
     }
@@ -238,7 +263,32 @@ export function App() {
         </button>
       </section>
 
+      <section className="step">
+        <div className="step-label">Во время занятия</div>
+        <p className="hint-line">
+          Ученик перетаскивает карточки в зоны, вы жмёте кнопку — верные зоны позеленеют, неверные
+          покраснеют. Проверяется урок, на который вы смотрите.
+        </p>
+        <button type="button" disabled={busy} onClick={() => void check()}>
+          Проверить задания
+        </button>
+      </section>
+
       {status.kind === 'busy' && <div className="status">{status.message}</div>}
+
+      {status.kind === 'checked' && (
+        <div className="status done" ref={statusRef}>
+          {`«${status.result.topic}» — верно ${status.result.correct} из ${status.result.total}`}
+          <ul>
+            {status.result.exercises.map((exercise) => (
+              <li key={exercise.ref}>
+                {exercise.title}: {exercise.correct} из {exercise.total}
+                {exercise.untouched > 0 && `, не разложено ${exercise.untouched}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {status.kind === 'done' && (
         <div className="status done" ref={statusRef}>

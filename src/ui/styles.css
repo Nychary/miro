@@ -35,6 +35,9 @@ body {
 
 #root {
   height: 100%;
+  /* Панель Miro узкая, но страницу можно открыть и прямо в браузере —
+     без ограничения ширины поля растягиваются на весь экран. */
+  max-width: 460px;
   padding: 20px;
   overflow-y: auto;
   overscroll-behavior: contain;

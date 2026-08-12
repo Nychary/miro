@@ -60,6 +60,11 @@ export const color = {
   /** Блок ответов для преподавателя. */
   answersFill: '#fdeeee',
   answersBorder: '#f0b4b4',
+  /** Подсветка зон после проверки. */
+  correctFill: '#eefaf3',
+  correctBorder: '#2f9e63',
+  wrongFill: '#fdeeee',
+  wrongBorder: '#d64545',
   /** Фон фрейма урока. */
   frameFill: '#ffffff',
   divider: '#e3e6ec',

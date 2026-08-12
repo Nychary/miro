@@ -6,6 +6,7 @@ import type {
   StrokeStyle,
   Text,
 } from '@mirohq/websdk-types'
+import type { ExerciseRecord } from './metadata'
 import { FONT_FAMILY, color, font } from './theme'
 
 /**
@@ -97,6 +98,13 @@ export class Canvas {
    */
   readonly backdrops: Shape[] = []
 
+  /**
+   * Интерактивные задания, попавшие на холст: какие зоны и какие карточки
+   * в них участвуют. Отсюда собирается указатель, который ложится в
+   * метаданные фрейма урока и позволяет проверке не опрашивать всё подряд.
+   */
+  readonly exercises: ExerciseRecord[] = []
+
   private readonly columnLeft: number
   private readonly columnWidth: number
   private cursor: number
@@ -168,6 +176,7 @@ export class Canvas {
 
     this.items.push(...child.items)
     this.backdrops.push(...child.backdrops)
+    this.exercises.push(...child.exercises)
     this.minX = Math.min(this.minX, box.left)
     this.minY = Math.min(this.minY, box.top)
     this.maxX = Math.max(this.maxX, box.left + box.width)
