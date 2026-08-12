@@ -1,0 +1,27 @@
+# Настройки приложения Miro для опубликованной панели.
+#
+# Отличается от miro-manifest.yml только адресом: там localhost для разработки,
+# здесь постоянный адрес на GitHub Pages. Держим оба, чтобы переключаться между
+# разработкой и работой без правки одного файла туда-сюда.
+#
+# Адрес складывается из логина и имени репозитория: github.com/Nychary/miro
+# публикуется на nychary.github.io/miro/. Если репозиторий переименовать,
+# поменяется и он.
+
+appName: Конструктор уроков
+sdkVersion: SDK_V2
+sdkUri: https://nychary.github.io/miro/
+
+scopes:
+  # Читаем доску, чтобы находить свободное место и проверять задания.
+  - boards:read
+  # Создаём объекты урока.
+  - boards:write
+
+boardPicker:
+  allowedDomains:
+    - nychary.github.io
+
+# Иконка в левой панели доски: доска с тезисами и стикером.
+icons:
+  outline: '<svg viewBox="0 0 24 24" width="48" height="48" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M7 8h5M7 12h3M12 21h-3M15 21h-3M12 17v4"/><rect x="14" y="8" width="4" height="4" rx="1"/></svg>'
