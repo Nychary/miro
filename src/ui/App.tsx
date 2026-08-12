@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { checkLesson, type CheckResult } from '../check/checkLesson'
 import { findLessonToCheck } from '../check/findLesson'
+import { startLiveCheck, type LiveCheck } from '../check/liveCheck'
 import { resetChips } from '../check/resetChips'
 import { buildPrompt, type LessonRequest } from '../lesson/prompt'
 import { SAMPLES } from '../lesson/samples'
@@ -37,10 +38,17 @@ export function App() {
   const [answer, setAnswer] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
+  const [live, setLive] = useState(false)
+  const liveRef = useRef<LiveCheck | null>(null)
+
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const promptSectionRef = useRef<HTMLElement>(null)
   const statusRef = useRef<HTMLDivElement>(null)
   const busy = status.kind === 'busy'
+
+  // Живая проверка держит подписку на события доски и таймер опроса. Если
+  // панель закроют, их некому будет снять — Miro просто уничтожит фрейм.
+  useEffect(() => () => liveRef.current?.stop(), [])
 
   // Панель в Miro — узкая колонка с прокруткой, и всё новое появляется ниже
   // текущего экрана. Без этого нажатие на кнопку выглядит как «ничего не
@@ -104,6 +112,31 @@ export function App() {
       setStatus({
         kind: 'error',
         heading: 'Не получилось нарисовать урок:',
+        errors: [error instanceof Error ? error.message : 'Неизвестная ошибка Miro'],
+      })
+    }
+  }
+
+  async function toggleLive() {
+    if (liveRef.current) {
+      liveRef.current.stop()
+      liveRef.current = null
+      setLive(false)
+      return
+    }
+
+    setStatus({ kind: 'busy', message: 'Включаю живую проверку…' })
+    try {
+      liveRef.current = await startLiveCheck({
+        onUpdate: (result) => setStatus({ kind: 'checked', result }),
+        onError: (message) =>
+          setStatus({ kind: 'error', heading: 'Живая проверка споткнулась:', errors: [message] }),
+      })
+      setLive(true)
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        heading: 'Не получилось включить:',
         errors: [error instanceof Error ? error.message : 'Неизвестная ошибка Miro'],
       })
     }
@@ -290,11 +323,20 @@ export function App() {
       <section className="step">
         <div className="step-label">Во время занятия</div>
         <p className="hint-line">
-          Ученик перетаскивает карточки в зоны, вы жмёте кнопку — верные зоны позеленеют, неверные
-          покраснеют. Проверяется урок, на который вы смотрите.
+          {live
+            ? 'Зона окрашивается сразу, как только в неё легла карточка.'
+            : 'Включите — и зоны начнут краснеть и зеленеть сами, по мере того как ученик раскладывает карточки. Следим за уроком, на который вы смотрите.'}
         </p>
-        <button type="button" disabled={busy} onClick={() => void check()}>
-          Проверить задания
+        <button
+          type="button"
+          className={live ? 'primary' : ''}
+          disabled={busy}
+          onClick={() => void toggleLive()}
+        >
+          {live ? 'Живая проверка включена' : 'Включить живую проверку'}
+        </button>
+        <button type="button" disabled={busy || live} onClick={() => void check()}>
+          Проверить один раз
         </button>
         <button type="button" disabled={busy} onClick={() => void reset()}>
           Разложить карточки обратно

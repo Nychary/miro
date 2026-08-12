@@ -1,5 +1,5 @@
 import type { Frame, Shape } from '@mirohq/websdk-types'
-import { loadExercises, type ZoneRecord } from '../render/metadata'
+import { loadExercises, type LessonExercises, type ZoneRecord } from '../render/metadata'
 import { color } from '../render/theme'
 
 /**
@@ -10,7 +10,13 @@ import { color } from '../render/theme'
  * заданий: в сопоставлении и пропусках в зону кладут одну карточку, а в
  * сортировке — сколько угодно. Заодно это делает безболезненными повторы:
  * если одно и то же слово нужно в двух пропусках, обе карточки засчитаются.
+ *
+ * Оценка отделена от подсветки намеренно. В живом режиме проверка идёт по
+ * несколько раз в секунду, и перекрашивать все зоны каждый раз — значит
+ * гонять десятки записей на доску впустую; красим только то, что изменилось.
  */
+
+export type ZoneState = 'correct' | 'wrong' | 'empty'
 
 export interface ExerciseResult {
   ref: string
@@ -29,6 +35,12 @@ export interface CheckResult {
   total: number
 }
 
+export interface Evaluation {
+  result: CheckResult
+  zoneStates: Map<string, ZoneState>
+  zones: Map<string, Shape>
+}
+
 /** Минимум, который нужен от объекта для геометрии. */
 interface Positioned {
   id: string
@@ -41,8 +53,15 @@ interface Positioned {
   relativeTo: string
 }
 
+/** Разовая проверка: оценить и покрасить всё. */
 export async function checkLesson(frame: Frame): Promise<CheckResult> {
-  const data = await loadExercises(frame.id)
+  const evaluation = await evaluateLesson(frame)
+  await paintZones(evaluation)
+  return evaluation.result
+}
+
+export async function evaluateLesson(frame: Frame, cached?: LessonExercises): Promise<Evaluation> {
+  const data = cached ?? (await loadExercises(frame.id))
   if (!data || data.exercises.length === 0) {
     throw new Error('В этом уроке нет заданий с проверкой.')
   }
@@ -64,16 +83,18 @@ export async function checkLesson(frame: Frame): Promise<CheckResult> {
   const parentById = new Map(parents.map((parent) => [parent.id, parent]))
 
   const results: ExerciseResult[] = []
-  const highlights: { zone: Positioned; state: 'correct' | 'wrong' | 'empty' }[] = []
+  const zoneStates = new Map<string, ZoneState>()
+  const zones = new Map<string, Shape>()
 
   for (const exercise of data.exercises) {
-    const zones = exercise.zones
+    const zoneEntries = exercise.zones
       .map((record) => ({ record, item: byId.get(record.id) }))
       .filter((entry): entry is { record: ZoneRecord; item: Positioned } => Boolean(entry.item))
 
-    const zoneVerdicts = new Map<string, 'correct' | 'wrong' | 'empty'>(
-      zones.map((zone) => [zone.record.id, 'empty' as const]),
-    )
+    for (const entry of zoneEntries) {
+      zoneStates.set(entry.record.id, 'empty')
+      if (entry.item.type === 'shape') zones.set(entry.record.id, entry.item as unknown as Shape)
+    }
 
     let correct = 0
     let wrong = 0
@@ -83,7 +104,7 @@ export async function checkLesson(frame: Frame): Promise<CheckResult> {
       const chip = byId.get(record.id)
       if (!chip) continue
 
-      const host = findHostZone(chip, zones, parentById)
+      const host = findHostZone(chip, zoneEntries, parentById)
       if (!host) {
         untouched += 1
         continue
@@ -95,12 +116,9 @@ export async function checkLesson(frame: Frame): Promise<CheckResult> {
 
       // Одна неверная карточка красит зону целиком: в сортировке зона общая,
       // и «частично верно» ученику ничего не говорит.
-      const current = zoneVerdicts.get(host.record.id)
-      if (current !== 'wrong') zoneVerdicts.set(host.record.id, isCorrect ? 'correct' : 'wrong')
-    }
-
-    for (const zone of zones) {
-      highlights.push({ zone: zone.item, state: zoneVerdicts.get(zone.record.id) ?? 'empty' })
+      if (zoneStates.get(host.record.id) !== 'wrong') {
+        zoneStates.set(host.record.id, isCorrect ? 'correct' : 'wrong')
+      }
     }
 
     results.push({
@@ -113,15 +131,51 @@ export async function checkLesson(frame: Frame): Promise<CheckResult> {
     })
   }
 
-  await paint(highlights, byId)
-
   return {
-    topic: data.topic,
-    exercises: results,
-    correct: results.reduce((sum, result) => sum + result.correct, 0),
-    total: results.reduce((sum, result) => sum + result.total, 0),
+    result: {
+      topic: data.topic,
+      exercises: results,
+      correct: results.reduce((sum, item) => sum + item.correct, 0),
+      total: results.reduce((sum, item) => sum + item.total, 0),
+    },
+    zoneStates,
+    zones,
   }
 }
+
+/** Красит зоны. Если передано прошлое состояние — только изменившиеся. */
+export async function paintZones(
+  evaluation: Evaluation,
+  previous?: Map<string, ZoneState>,
+): Promise<void> {
+  const pending = [...evaluation.zoneStates.entries()].filter(
+    ([id, state]) => !previous || previous.get(id) !== state,
+  )
+  if (pending.length === 0) return
+
+  const BATCH = 10
+  for (let index = 0; index < pending.length; index += BATCH) {
+    await Promise.all(
+      pending.slice(index, index + BATCH).map(async ([id, state]) => {
+        const zone = evaluation.zones.get(id)
+        if (!zone) return
+
+        const palette = PALETTE[state]
+        zone.style.fillColor = palette.fillColor
+        zone.style.borderColor = palette.borderColor
+        zone.style.borderStyle = palette.borderStyle
+        zone.style.borderWidth = state === 'empty' ? 2 : 4
+        await zone.sync()
+      }),
+    )
+  }
+}
+
+const PALETTE = {
+  correct: { fillColor: color.correctFill, borderColor: color.correctBorder, borderStyle: 'normal' },
+  wrong: { fillColor: color.wrongFill, borderColor: color.wrongBorder, borderStyle: 'normal' },
+  empty: { fillColor: color.dropZoneFill, borderColor: color.dropZoneBorder, borderStyle: 'dashed' },
+} as const
 
 // ---------------------------------------------------------------------------
 
@@ -174,34 +228,4 @@ function absoluteCenter(item: Positioned, parents: Map<string, Positioned>): { x
 
 function normalize(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru-RU')
-}
-
-const PALETTE = {
-  correct: { fillColor: color.correctFill, borderColor: color.correctBorder, borderStyle: 'normal' },
-  wrong: { fillColor: color.wrongFill, borderColor: color.wrongBorder, borderStyle: 'normal' },
-  empty: { fillColor: color.dropZoneFill, borderColor: color.dropZoneBorder, borderStyle: 'dashed' },
-} as const
-
-/** Красит зоны по итогам проверки. Пустые возвращаются к исходному виду. */
-async function paint(
-  highlights: { zone: Positioned; state: keyof typeof PALETTE }[],
-  byId: Map<string, Positioned>,
-): Promise<void> {
-  const BATCH = 10
-
-  for (let index = 0; index < highlights.length; index += BATCH) {
-    await Promise.all(
-      highlights.slice(index, index + BATCH).map(async ({ zone, state }) => {
-        const item = byId.get(zone.id) as unknown as Shape | undefined
-        if (!item || item.type !== 'shape') return
-
-        const palette = PALETTE[state]
-        item.style.fillColor = palette.fillColor
-        item.style.borderColor = palette.borderColor
-        item.style.borderStyle = palette.borderStyle
-        item.style.borderWidth = state === 'empty' ? 2 : 4
-        await item.sync()
-      }),
-    )
-  }
 }
