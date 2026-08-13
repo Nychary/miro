@@ -74,6 +74,24 @@ describe('обёртка вокруг JSON', () => {
     expect(result.errors[0]).toContain('не нашёлся JSON')
   })
 
+  it('чинит одиночные обратные слэши из LaTeX и предупреждает', () => {
+    // Нейросети регулярно пишут в latex «\Delta» вместо «\\Delta» — для
+    // JSON это сломанный escape, из-за него падал разбор реального урока.
+    const raw = String.raw`{
+      "meta": { "subject": "physics", "topic": "Импульс", "level": "9 класс", "durationMin": 60, "language": "ru" },
+      "blocks": [{
+        "type": "formulas",
+        "items": [{ "plain": "Δp = F·Δt", "latex": "\Delta p = F \cdot \Delta t", "description": "Импульс силы." }]
+      }]
+    }`
+    const result = parseLessonResponse(raw)
+    if (!result.ok) throw new Error(result.errors.join('; '))
+
+    expect(result.warnings.join(' ')).toContain('экранирования')
+    const formulas = result.lesson.blocks[0]
+    expect(formulas).toMatchObject({ type: 'formulas' })
+  })
+
   it('жалуется на обрезанный ответ', () => {
     const truncated = JSON.stringify(PHYSICS_SAMPLE).slice(0, 400)
     const result = parseLessonResponse(truncated)

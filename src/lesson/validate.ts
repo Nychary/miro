@@ -45,19 +45,34 @@ export function parseLessonResponse(raw: string): ParseResult {
   }
 
   let parsed: unknown
+  let repairedEscapes = false
   try {
     parsed = JSON.parse(json)
   } catch (error) {
-    return {
-      ok: false,
-      errors: [
-        `JSON не разбирается: ${error instanceof Error ? error.message : 'неизвестная ошибка'}.`,
-        'Часто это обрезанный ответ. Попросите нейросеть выдать урок целиком или сократите его.',
-      ],
+    // Самая частая причина — одиночные обратные слэши в LaTeX-формулах:
+    // «\Delta» вместо «\\Delta». JSON такой escape не признаёт. Чиним сами:
+    // удваиваем каждый слэш, за которым не следует законный escape-символ.
+    try {
+      parsed = JSON.parse(json.replace(/\\(?!["\\/bfnrtu])/g, '\\\\'))
+      repairedEscapes = true
+    } catch {
+      return {
+        ok: false,
+        errors: [
+          `JSON не разбирается: ${error instanceof Error ? error.message : 'неизвестная ошибка'}.`,
+          'Часто это обрезанный ответ — попросите нейросеть выдать урок целиком.',
+          'Другая частая причина — одиночные обратные слэши в формулах: попросите её удвоить их (\\\\Delta вместо \\Delta).',
+        ],
+      }
     }
   }
 
   const problems = new Problems()
+  if (repairedEscapes) {
+    problems.warn(
+      'В ответе были неправильные экранирования (обратные слэши в формулах) — исправлено автоматически. Просмотрите формулы на доске.',
+    )
+  }
   const lesson = validateLesson(parsed, problems)
 
   if (problems.errors.length > 0 || !lesson) {
