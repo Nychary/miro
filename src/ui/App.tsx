@@ -6,7 +6,7 @@ import { startLiveCheck, type LiveCheck } from '../check/liveCheck'
 import { resetChips } from '../check/resetChips'
 import { buildPrompt, type LessonRequest } from '../lesson/prompt'
 import { SAMPLES } from '../lesson/samples'
-import type { Lesson, Subject } from '../lesson/schema'
+import { titleFor, type Lesson, type Subject } from '../lesson/schema'
 import { parseLessonResponse } from '../lesson/validate'
 import { renderLesson } from '../render/renderLesson'
 import { STYLE_SUGGESTIONS } from '../render/theme'
@@ -59,6 +59,12 @@ export function App() {
   const lessonAnswers = lastLesson?.blocks.find(
     (block): block is Extract<Lesson['blocks'][number], { type: 'answers' }> => block.type === 'answers',
   )
+
+  const lessonScript = lastLesson
+    ? lastLesson.blocks
+        .filter((block) => block.say)
+        .map((block) => ({ title: titleFor(block, lastLesson.meta.language), say: block.say as string }))
+    : []
 
   // Живая проверка держит подписку на события доски и таймер опроса. Если
   // панель закроют, их некому будет снять — Miro просто уничтожит фрейм.
@@ -456,6 +462,18 @@ export function App() {
                 ))}
               </ul>
             </>
+          )}
+          {lessonScript.length > 0 && (
+            <details className="answers-panel">
+              <summary>Сценарий для учителя — что говорить</summary>
+              <ul>
+                {lessonScript.map((entry) => (
+                  <li key={entry.title + entry.say}>
+                    <strong>{entry.title}:</strong> {entry.say}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
           {lastLesson?.meta.imageIdeas && lastLesson.meta.imageIdeas.length > 0 && (
             <>

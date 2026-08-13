@@ -237,10 +237,18 @@ function renderAnswers(block: AnswersBlock, lesson: Lesson): string {
     ? `<p class="muted">Картинки к оформлению: ${lesson.meta.imageIdeas.map(esc).join(' · ')}</p>`
     : ''
 
+  const script = lesson.blocks.filter((item) => item.say)
+  const scriptHtml = script.length
+    ? `<h3>Сценарий</h3><ul>${script
+        .map((item) => `<li><strong>${esc(titleFor(item, lesson.meta.language))}:</strong> ${esc(item.say ?? '')}</li>`)
+        .join('')}</ul>`
+    : ''
+
   return `<section class="answers">
 <h2>${esc(titleFor(block, lesson.meta.language))}</h2>
 <p class="muted">Перед печатью для ученика отрежьте эту часть.</p>
 ${imageIdeas}
+${scriptHtml}
 ${block.items
   .map(
     (entry) => `<div class="card"><h3>${esc(entry.ref.toUpperCase())} — ${esc(entry.answer)}</h3>${

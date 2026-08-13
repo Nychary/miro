@@ -63,6 +63,15 @@ describe('шаблон из пяти упражнений', () => {
   })
 })
 
+describe('опорный сценарий учителя', () => {
+  it('всегда просит фразы say и учитывает имя ученика', () => {
+    const prompt = buildPrompt({ ...BASE, student: 'Пётр' })
+    expect(prompt).toContain('Опорный сценарий для учителя')
+    expect(prompt).toContain('"say"')
+    expect(prompt).toContain('по имени (Пётр)')
+  })
+})
+
 describe('опознание собственного промпта', () => {
   it('узнаёт промпт любого шаблона', () => {
     expect(looksLikePrompt(buildPrompt(BASE))).toBe(true)

@@ -167,7 +167,16 @@ function validateLesson(input: unknown, problems: Problems): Lesson | null {
   const rawBlocks = requireArray(input.blocks, 'blocks', problems)
 
   const blocks = rawBlocks
-    .map((block, index) => validateBlock(block, `blocks[${index}]`, problems))
+    .map((raw, index) => {
+      const block = validateBlock(raw, `blocks[${index}]`, problems)
+      // Поле «say» общее для всех типов, поэтому вешается здесь, а не в
+      // пятнадцати ветках validateBlock по отдельности.
+      if (block && isRecord(raw)) {
+        const say = optionalString(raw.say)
+        if (say) block.say = say
+      }
+      return block
+    })
     .filter((block): block is Block => block !== null)
 
   if (!meta || blocks.length === 0) return null

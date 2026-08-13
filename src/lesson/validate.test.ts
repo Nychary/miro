@@ -132,6 +132,7 @@ describe('проверка содержимого', () => {
           {
             type: 'mindmap',
             center: 'Закон Ома',
+            say: 'Открываем карту звёздного неба темы.',
             branches: [{ label: 'Сила тока', children: ['I = U / R'] }],
           },
           { type: 'reflection', prompts: ['Освоено', 'Сложно', 'Хочу ещё'] },
@@ -146,7 +147,11 @@ describe('проверка содержимого', () => {
     expect(result.lesson.meta.styleEmoji).toEqual(['⭐', '🪐'])
     expect(result.lesson.meta.imageIdeas).toEqual(['Ван Гог Звёздная ночь'])
     const [mindmap, withPrompts, bare] = result.lesson.blocks
-    expect(mindmap).toMatchObject({ type: 'mindmap', center: 'Закон Ома' })
+    expect(mindmap).toMatchObject({
+      type: 'mindmap',
+      center: 'Закон Ома',
+      say: 'Открываем карту звёздного неба темы.',
+    })
     expect(withPrompts).toMatchObject({ type: 'reflection', prompts: ['Освоено', 'Сложно', 'Хочу ещё'] })
     expect(bare).toMatchObject({ type: 'reflection' })
   })

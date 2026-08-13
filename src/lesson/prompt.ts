@@ -31,6 +31,7 @@ export function buildPrompt(request: LessonRequest): string {
     task(request),
     styleSection(request.style),
     request.template === 'five' ? fiveStructure(request) : structure(request),
+    teacherScript(request),
     SCHEMA_SPEC,
     contentRules(request.subject),
     OUTPUT_RULES,
@@ -168,6 +169,24 @@ function structure(request: LessonRequest): string {
   ].join('\n')
 }
 
+/**
+ * Опорный сценарий — приём из школьных онлайн-платформ: у каждого задания
+ * есть фраза, которой учитель вводит его вслух. Снимает с репетитора
+ * необходимость на ходу придумывать связки между упражнениями.
+ */
+function teacherScript(request: LessonRequest): string {
+  const name = request.student?.trim()
+  return [
+    'Опорный сценарий для учителя:',
+    `— В каждом блоке заполни поле "say": 1–2 живые разговорные фразы, которыми учитель`,
+    '  вводит этот блок вслух. Например: «А теперь поможем нашему герою составить текст»,',
+    '  «Смотри, что за история тут приключилась». Если задан стиль — фразы в его эстетике.',
+    `— Обращайся к ученику на «ты»${name ? ` и по имени (${name})` : ''}.`,
+    '— Ученик этих фраз не видит, это подсказка учителю. Не пересказывай в них условие',
+    '  задания — только подводку и живость.',
+  ].join('\n')
+}
+
 const SCHEMA_SPEC = `Формат ответа — один JSON-объект такой структуры:
 
 {
@@ -185,8 +204,9 @@ const SCHEMA_SPEC = `Формат ответа — один JSON-объект т
   "blocks": Block[]
 }
 
-Каждый Block — объект с полем "type" и своими полями. Поле "title" необязательно
-у всех блоков: если его не задать, подпись подставится автоматически.
+Каждый Block — объект с полем "type" и своими полями. У всех блоков есть два
+необязательных общих поля: "title" (заголовок секции; без него подставится
+стандартный) и "say" (опорная фраза учителя — см. раздел про сценарий).
 
 { "type": "objectives", "items": string[] }
 { "type": "warmup", "prompts": string[] }

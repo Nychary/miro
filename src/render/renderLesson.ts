@@ -1,5 +1,5 @@
 import type { Connector, Frame, Text } from '@mirohq/websdk-types'
-import type { AnswersBlock, Block, Lesson } from '../lesson/schema'
+import { titleFor, type AnswersBlock, type Block, type Lesson } from '../lesson/schema'
 import { renderBlock } from './blocks'
 import { Canvas, bold, escapeHtml, paragraphs, type CanvasItem } from './canvas'
 import { card, section } from './composition'
@@ -80,7 +80,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
       ? lesson.blocks.find((block): block is AnswersBlock => block.type === 'answers')
       : undefined
     if (answersBlock) {
-      answersCanvas = await renderAnswersAside(answersBlock, {
+      answersCanvas = await renderAnswersAside(answersBlock, lesson, {
         left: origin.left + ANSWERS_OFFSET_X,
         top: origin.top + FRAME_PADDING,
       })
@@ -165,7 +165,11 @@ async function renderHeader(canvas: Canvas, lesson: Lesson): Promise<void> {
  * поэтому единственный способ не показать ответы ученику — держать их там,
  * куда не попадает экран во время занятия.
  */
-async function renderAnswersAside(block: AnswersBlock, origin: { left: number; top: number }): Promise<Canvas> {
+async function renderAnswersAside(
+  block: AnswersBlock,
+  lesson: Lesson,
+  origin: { left: number; top: number },
+): Promise<Canvas> {
   const canvas = new Canvas({ left: origin.left, top: origin.top, width: CONTENT_WIDTH * 0.6 })
 
   await canvas.text(bold('Ответы'), { size: font.lessonTitle, gapAfter: gap.xs })
@@ -188,6 +192,23 @@ async function renderAnswersAside(block: AnswersBlock, origin: { left: number; t
         })
       }
     })
+  }
+
+  // Опорный сценарий — фразы, которыми учитель вводит блоки. Живёт рядом
+  // с ключом: это одна шпаргалка преподавателя, а не два разных места.
+  const script = lesson.blocks.filter((item) => item.say)
+  if (script.length > 0) {
+    await section(canvas, 'Сценарий')
+    for (const item of script) {
+      await card(canvas, { fillColor: color.theoryFill, borderColor: color.theoryBorder }, async (inner) => {
+        await canvas.text(bold(titleFor(item, lesson.meta.language)), {
+          ...inner,
+          size: font.small,
+          gapAfter: gap.xs,
+        })
+        await canvas.text(paragraphs(escapeHtml(item.say ?? '')), { ...inner, size: font.body })
+      })
+    }
   }
 
   return canvas

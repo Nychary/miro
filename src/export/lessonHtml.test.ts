@@ -51,6 +51,15 @@ describe('полнота экспорта', () => {
     expect(html).toContain('R = 550 Ом')
     expect(html).toContain('отрежьте эту часть')
   })
+
+  it('сценарий учителя лежит в преподавательской части', () => {
+    const html = lessonToHtml(PHYSICS_SAMPLE)
+    const teacherPart = html.slice(html.indexOf('class="answers"'))
+    expect(teacherPart).toContain('Сценарий')
+    expect(teacherPart).toContain('проверим бортовые системы')
+    // До преподавательской части фраз сценария быть не должно.
+    expect(html.slice(0, html.indexOf('class="answers"'))).not.toContain('бортовые системы')
+  })
 })
 
 describe('устойчивость', () => {
