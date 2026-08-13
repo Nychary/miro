@@ -12,6 +12,16 @@ export interface RenderResult {
   itemCount: number
 }
 
+export interface RenderOptions {
+  /**
+   * Выносить ли ответы отдельным фреймом на доску. По умолчанию нет:
+   * ученику для интерактивов нужны права редактирования, а с ними он может
+   * доскроллить до любого угла доски — включая фрейм с ответами. Панель
+   * репетитора ученику не видна, поэтому ответы безопаснее показывать там.
+   */
+  answersOnBoard?: boolean
+}
+
 /**
  * Рисует урок на доске и возвращает созданный фрейм.
  *
@@ -20,7 +30,7 @@ export interface RenderResult {
  * от того, как Miro перенесёт строки, — поэтому фрейм создаётся последним,
  * по фактическим габаритам.
  */
-export async function renderLesson(lesson: Lesson): Promise<RenderResult> {
+export async function renderLesson(lesson: Lesson, options: RenderOptions = {}): Promise<RenderResult> {
   const origin = await findOrigin(lesson)
 
   const canvas = new Canvas({
@@ -41,7 +51,9 @@ export async function renderLesson(lesson: Lesson): Promise<RenderResult> {
       await renderBlock(canvas, block, lesson)
     }
 
-    const answersBlock = lesson.blocks.find((block): block is AnswersBlock => block.type === 'answers')
+    const answersBlock = options.answersOnBoard
+      ? lesson.blocks.find((block): block is AnswersBlock => block.type === 'answers')
+      : undefined
     if (answersBlock) {
       answersCanvas = await renderAnswersAside(answersBlock, {
         left: origin.left + ANSWERS_OFFSET_X,

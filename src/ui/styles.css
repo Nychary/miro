@@ -220,6 +220,29 @@ button.primary:hover:not(:disabled) {
   background: #3550e0;
 }
 
+/* --- Галочка ----------------------------------------------------------- */
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0;
+  font-weight: 400;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.check input {
+  width: auto;
+  margin-top: 3px;
+}
+
+.check .hint {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* --- Статус ------------------------------------------------------------ */
 
 .status {
@@ -243,6 +266,25 @@ button.primary:hover:not(:disabled) {
 .status-heading {
   margin: 8px 0 4px;
   font-weight: 600;
+}
+
+.answers-panel {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #d0d5dd;
+}
+
+.answers-panel summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.answers-panel ul {
+  margin-top: 6px;
+}
+
+.answers-panel .solution {
+  color: var(--muted);
 }
 
 .status ul {

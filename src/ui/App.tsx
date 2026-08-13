@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { checkLesson, type CheckResult } from '../check/checkLesson'
+import { lessonToHtml } from '../export/lessonHtml'
 import { findLessonToCheck } from '../check/findLesson'
 import { startLiveCheck, type LiveCheck } from '../check/liveCheck'
 import { resetChips } from '../check/resetChips'
@@ -41,10 +42,17 @@ export function App() {
   const [live, setLive] = useState(false)
   const liveRef = useRef<LiveCheck | null>(null)
 
+  const [answersOnBoard, setAnswersOnBoard] = useState(false)
+  const [lastLesson, setLastLesson] = useState<Lesson | null>(null)
+
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const promptSectionRef = useRef<HTMLElement>(null)
   const statusRef = useRef<HTMLDivElement>(null)
   const busy = status.kind === 'busy'
+
+  const lessonAnswers = lastLesson?.blocks.find(
+    (block): block is Extract<Lesson['blocks'][number], { type: 'answers' }> => block.type === 'answers',
+  )
 
   // Живая проверка держит подписку на события доски и таймер опроса. Если
   // панель закроют, их некому будет снять — Miro просто уничтожит фрейм.
@@ -102,10 +110,13 @@ export function App() {
   async function draw(lesson: Lesson, warnings: string[] = []) {
     setStatus({ kind: 'busy', message: `Рисую урок «${lesson.meta.topic}»…` })
     try {
-      const result = await renderLesson(lesson)
+      const result = await renderLesson(lesson, { answersOnBoard })
+      setLastLesson(lesson)
       setStatus({
         kind: 'done',
-        message: `Готово: ${result.itemCount} объектов${result.answersFrame ? ', ответы в отдельном фрейме справа' : ''}.`,
+        message: `Готово: ${result.itemCount} объектов${
+          result.answersFrame ? ', ответы в отдельном фрейме справа' : ', ответы — ниже в панели'
+        }.`,
         warnings,
       })
     } catch (error) {
@@ -194,6 +205,20 @@ export function App() {
       return
     }
     void draw(parsed.lesson, parsed.warnings)
+  }
+
+  function downloadHtml() {
+    if (!lastLesson) return
+
+    const blob = new Blob([lessonToHtml(lastLesson)], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `урок-${lastLesson.meta.topic.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}.html`
+    document.body.append(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 5000)
   }
 
   const canBuild = topic.trim().length > 0 && level.trim().length > 0
@@ -310,6 +335,19 @@ export function App() {
           onChange={(event) => setAnswer(event.target.value)}
           placeholder="Вставьте сюда ответ нейросети"
         />
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={answersOnBoard}
+            onChange={(event) => setAnswersOnBoard(event.target.checked)}
+          />
+          <span>
+            Вынести ответы фреймом на доску
+            <span className="hint">
+              осторожно: ученик с правами редактирования может до них доскроллить
+            </span>
+          </span>
+        </label>
         <button
           type="button"
           className="primary"
@@ -373,7 +411,32 @@ export function App() {
               </ul>
             </>
           )}
+          {!answersOnBoard && lessonAnswers && lessonAnswers.items.length > 0 && (
+            <details className="answers-panel">
+              <summary>Ответы — только для преподавателя</summary>
+              <ul>
+                {lessonAnswers.items.map((entry) => (
+                  <li key={entry.ref}>
+                    <strong>{entry.ref.toUpperCase()}</strong> — {entry.answer}
+                    {entry.solution && <span className="solution"> ({entry.solution})</span>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
+      )}
+
+      {lastLesson && !busy && (
+        <section className="step">
+          <div className="step-label">Страховка</div>
+          <button type="button" onClick={downloadHtml}>
+            Скачать урок файлом (HTML)
+            <span className="hint">
+              открывается в любом браузере и печатается — не зависит ни от Miro, ни от интернета
+            </span>
+          </button>
+        </section>
       )}
 
       {status.kind === 'error' && (
