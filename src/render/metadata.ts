@@ -92,6 +92,11 @@ export interface LessonExercises {
   /** Фрейм урока, к которому относится запись. */
   frameId: string
   topic: string
+  /**
+   * Стиль оформления урока. Нужен проверке и сбросу: они перекрашивают зоны
+   * и обязаны попадать в палитру урока, даже если панель перезагружали.
+   */
+  style?: string
   exercises: ExerciseRecord[]
 }
 

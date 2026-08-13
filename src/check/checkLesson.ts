@@ -1,6 +1,6 @@
 import type { Frame, Shape } from '@mirohq/websdk-types'
 import { loadExercises, type LessonExercises, type ZoneRecord } from '../render/metadata'
-import { color } from '../render/theme'
+import { applyStyle, color } from '../render/theme'
 
 /**
  * Проверка интерактивных заданий урока.
@@ -65,6 +65,10 @@ export async function evaluateLesson(frame: Frame, cached?: LessonExercises): Pr
   if (!data || data.exercises.length === 0) {
     throw new Error('В этом уроке нет заданий с проверкой.')
   }
+
+  // Подсветка обязана попадать в палитру урока: без этого проверка урока
+  // в «Космосе» красила бы зоны цветами стандартной светлой темы.
+  applyStyle(data.style)
 
   const ids = data.exercises.flatMap((exercise) => [
     ...exercise.zones.map((zone) => zone.id),
@@ -160,7 +164,7 @@ export async function paintZones(
         const zone = evaluation.zones.get(id)
         if (!zone) return
 
-        const palette = PALETTE[state]
+        const palette = paletteFor(state)
         zone.style.fillColor = palette.fillColor
         zone.style.borderColor = palette.borderColor
         zone.style.borderStyle = palette.borderStyle
@@ -171,11 +175,21 @@ export async function paintZones(
   }
 }
 
-const PALETTE = {
-  correct: { fillColor: color.correctFill, borderColor: color.correctBorder, borderStyle: 'normal' },
-  wrong: { fillColor: color.wrongFill, borderColor: color.wrongBorder, borderStyle: 'normal' },
-  empty: { fillColor: color.dropZoneFill, borderColor: color.dropZoneBorder, borderStyle: 'dashed' },
-} as const
+/**
+ * Функция, а не константа: значения палитры читаются в момент покраски,
+ * уже после applyStyle. Константа зафиксировала бы стандартные цвета
+ * при загрузке модуля, и стилизованные уроки красились бы невпопад.
+ */
+function paletteFor(state: ZoneState): { fillColor: string; borderColor: string; borderStyle: 'normal' | 'dashed' } {
+  switch (state) {
+    case 'correct':
+      return { fillColor: color.correctFill, borderColor: color.correctBorder, borderStyle: 'normal' }
+    case 'wrong':
+      return { fillColor: color.wrongFill, borderColor: color.wrongBorder, borderStyle: 'normal' }
+    case 'empty':
+      return { fillColor: color.dropZoneFill, borderColor: color.dropZoneBorder, borderStyle: 'dashed' }
+  }
+}
 
 // ---------------------------------------------------------------------------
 

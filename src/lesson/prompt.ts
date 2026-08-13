@@ -16,17 +16,25 @@ export interface LessonRequest extends Omit<LessonMeta, 'language'> {
   language: 'ru' | 'en'
   /** Что известно про ученика: уровень, пробелы, цели. Пока вводится вручную. */
   studentNotes?: string
+  /**
+   * Шаблон структуры урока. «five» — авторский план репетитора из пяти
+   * упражнений: Вспоминаем, Новый материал, Практика, Игра, Рефлексия.
+   */
+  template?: 'classic' | 'five'
+  /** Тема прошлого занятия — для упражнения «Вспоминаем» в шаблоне «five». */
+  prevTopic?: string
 }
 
 export function buildPrompt(request: LessonRequest): string {
   const sections = [
     role(request.subject),
     task(request),
-    structure(request),
+    styleSection(request.style),
+    request.template === 'five' ? fiveStructure(request) : structure(request),
     SCHEMA_SPEC,
     contentRules(request.subject),
     OUTPUT_RULES,
-  ]
+  ].filter((section): section is string => Boolean(section))
   return sections.join('\n\n').trim()
 }
 
@@ -48,6 +56,49 @@ function task(request: LessonRequest): string {
   if (request.student) lines.push(`Ученик: ${request.student}`)
   if (request.studentNotes?.trim()) lines.push(`Что известно про ученика: ${request.studentNotes.trim()}`)
   return lines.join('\n')
+}
+
+/**
+ * Стилизация — двухслойная: формулировки делает нейросеть по этой секции,
+ * а цвета подбирает рендерер по названию стиля из meta.style. Поэтому
+ * критично, чтобы название вернулось в JSON без изменений.
+ */
+function styleSection(style?: string): string | null {
+  if (!style?.trim()) return null
+
+  return [
+    `Стиль оформления: «${style.trim()}».`,
+    '— Выдержи в этой эстетике заголовки блоков (поле "title"), инструкции к заданиям,',
+    '  формулировки вопросов и подбадривания. Примеры подачи: «Гарри Поттер» →',
+    '  «Сегодня изучаем заклинание Past Simple»; «Детектив» → «Дело №3: тайна',
+    '  пропавшего сопротивления»; «Космос» → «Миссия: рассчитать ток».',
+    '— Предметное содержание стилизация не искажает: условия задач, формулы,',
+    '  правила и ответы остаются точными.',
+    '— Верни название стиля без изменений в meta.style.',
+  ].join('\n')
+}
+
+/**
+ * Авторский план репетитора: каждый урок — пять упражнений в фиксированном
+ * порядке. Он заведён отдельным шаблоном, а не заменил классический, чтобы
+ * было с чем сравнивать и куда откатиться.
+ */
+function fiveStructure(request: LessonRequest): string {
+  const physics = request.subject === 'physics'
+  const recall = request.prevTopic?.trim()
+    ? `по прошлой теме («${request.prevTopic.trim()}»)`
+    : 'по знаниям, на которые опирается новая тема'
+
+  return [
+    'Структура урока — 5 упражнений строго в этом порядке, плюс ответы:',
+    `1. warmup c "title": "Вспоминаем" — 3 вопроса ${recall}`,
+    '2. mindmap — новый материал интеллект-картой: центральное понятие и 3–5 веток по 2–4 коротких тезиса' +
+      (physics ? '; формулы включай в тезисы веток юникодом' : ''),
+    `3. ${physics ? 'tasks c "title": "Практика" — 4 задачи по возрастанию сложности, с подсказками к трудным' : 'gapfill c "title": "Практика" — 4–5 предложений с пропусками плюс 2–3 лишних варианта'}`,
+    '4. matching или sorting c "title": "Игра" — одно интерактивное задание на перетаскивание',
+    '5. reflection — рефлексия; можно задать свои подписи колонок в "prompts" в стиле урока',
+    '6. answers — ответы ко всем заданиям практики и игры' + (physics ? ', с ходом решения' : ''),
+  ].join('\n')
 }
 
 /**
@@ -100,7 +151,8 @@ const SCHEMA_SPEC = `Формат ответа — один JSON-объект т
     "level": string,
     "durationMin": number,
     "student": string,          // необязательно
-    "language": "ru" | "en"     // язык подписей на доске
+    "language": "ru" | "en",    // язык подписей на доске
+    "style": string             // необязательно: стиль оформления, верни как в запросе
   },
   "blocks": Block[]
 }
@@ -111,6 +163,9 @@ const SCHEMA_SPEC = `Формат ответа — один JSON-объект т
 { "type": "objectives", "items": string[] }
 { "type": "warmup", "prompts": string[] }
 { "type": "theory", "points": [{ "heading": string, "body": string }] }
+{ "type": "mindmap", "center": string,
+  "branches": [{ "label": string, "children": string[] }] }
+{ "type": "reflection", "prompts": string[] }   // необязательно: подписи трёх колонок
 { "type": "formulas", "items": [{
     "plain": string,          // формула юникодом: "I = U / R", "Δp = F·Δt"
     "latex": string,          // необязательно, та же формула в LaTeX
@@ -192,7 +247,9 @@ function contentRules(subject: Subject): string {
  * описание схемы, пытается прочесть его как JSON и жалуется на синтаксис,
  * отправляя искать проблему в ответе нейросети, которого там нет.
  */
-const PROMPT_MARKERS = ['Структура урока — блоки строго в этом порядке', 'Формат ответа:']
+// Маркеры берутся из OUTPUT_RULES: эта секция есть в промпте при любом
+// шаблоне структуры, в отличие от заголовка структуры, который меняется.
+const PROMPT_MARKERS = ['Формат ответа:', 'Не добавляй полей, которых нет в схеме']
 
 export function looksLikePrompt(text: string): boolean {
   return PROMPT_MARKERS.every((marker) => text.includes(marker))

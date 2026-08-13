@@ -115,6 +115,41 @@ describe('проверка содержимого', () => {
     expect(result.errors.join(' ')).toContain('crossword')
   })
 
+  it('разбирает интеллект-карту и рефлексию', () => {
+    const result = parseLessonResponse(
+      JSON.stringify({
+        meta: { subject: 'physics', topic: 'Т', level: '8', durationMin: 60, language: 'ru', style: 'Космос' },
+        blocks: [
+          {
+            type: 'mindmap',
+            center: 'Закон Ома',
+            branches: [{ label: 'Сила тока', children: ['I = U / R'] }],
+          },
+          { type: 'reflection', prompts: ['Освоено', 'Сложно', 'Хочу ещё'] },
+          { type: 'reflection' },
+        ],
+      }),
+    )
+    if (!result.ok) throw new Error(result.errors.join('; '))
+
+    expect(result.lesson.meta.style).toBe('Космос')
+    const [mindmap, withPrompts, bare] = result.lesson.blocks
+    expect(mindmap).toMatchObject({ type: 'mindmap', center: 'Закон Ома' })
+    expect(withPrompts).toMatchObject({ type: 'reflection', prompts: ['Освоено', 'Сложно', 'Хочу ещё'] })
+    expect(bare).toMatchObject({ type: 'reflection' })
+  })
+
+  it('называет путь до сломанной ветки интеллект-карты', () => {
+    const result = parseLessonResponse(
+      JSON.stringify({
+        meta: { subject: 'physics', topic: 'Т', level: '8', durationMin: 60, language: 'ru' },
+        blocks: [{ type: 'mindmap', center: 'X', branches: [{ label: 'Есть' }] }],
+      }),
+    )
+    if (result.ok) throw new Error('ожидалась ошибка')
+    expect(result.errors.join(' ')).toContain('blocks[0].branches[0].children')
+  })
+
   it('подставляет длительность, если её забыли', () => {
     const result = parseLessonResponse(
       JSON.stringify({

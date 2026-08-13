@@ -1,4 +1,5 @@
 import type {
+  Connector,
   FontFamily,
   Shape,
   StickyNote,
@@ -105,6 +106,13 @@ export class Canvas {
    */
   readonly exercises: ExerciseRecord[] = []
 
+  /**
+   * Соединительные линии интеллект-карт. Хранятся отдельно от items:
+   * в габариты урока они не входят (геометрию линии определяют её концы),
+   * но во фрейм сложить их нужно, иначе при переносе урока линии отстанут.
+   */
+  readonly connectors: Connector[] = []
+
   private readonly columnLeft: number
   private readonly columnWidth: number
   private cursor: number
@@ -177,6 +185,7 @@ export class Canvas {
     this.items.push(...child.items)
     this.backdrops.push(...child.backdrops)
     this.exercises.push(...child.exercises)
+    this.connectors.push(...child.connectors)
     this.minX = Math.min(this.minX, box.left)
     this.minY = Math.min(this.minY, box.top)
     this.maxX = Math.max(this.maxX, box.left + box.width)
@@ -275,6 +284,23 @@ export class Canvas {
     // Стикеры всегда расставляются сеткой вручную, поэтому в поток не идут.
     this.register(item, { left, top, width: item.width, height: item.height }, false)
     return item
+  }
+
+  /** Соединительная линия между двумя объектами — для интеллект-карт. */
+  async connect(from: CanvasItem, to: CanvasItem): Promise<Connector> {
+    const connector = await miro.board.createConnector({
+      start: { item: from.id },
+      end: { item: to.id },
+      shape: 'curved',
+      style: {
+        strokeColor: color.muted,
+        strokeWidth: 3,
+        startStrokeCap: 'none',
+        endStrokeCap: 'none',
+      },
+    })
+    this.connectors.push(connector)
+    return connector
   }
 
   /**

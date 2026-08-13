@@ -201,6 +201,7 @@ function validateMeta(input: unknown, problems: Problems): Lesson['meta'] | null
     level: requireString(input.level, 'meta.level', problems),
     durationMin: duration,
     ...(optionalString(input.student) ? { student: optionalString(input.student) as string } : {}),
+    ...(optionalString(input.style) ? { style: optionalString(input.style) as string } : {}),
     language,
   }
 }
@@ -232,6 +233,28 @@ function validateBlock(input: unknown, path: string, problems: Problems): Block 
 
     case 'homework':
       return { type, title, items: requireStringArray(input.items, `${path}.items`, problems) }
+
+    case 'mindmap': {
+      const branches = requireArray(input.branches, `${path}.branches`, problems).map((branch, index) => {
+        const at = `${path}.branches[${index}]`
+        if (!isRecord(branch)) {
+          problems.error(at, 'ожидался объект')
+          return { label: '', children: [] }
+        }
+        return {
+          label: requireString(branch.label, `${at}.label`, problems),
+          children: requireStringArray(branch.children, `${at}.children`, problems),
+        }
+      })
+      return { type, title, center: requireString(input.center, `${path}.center`, problems), branches }
+    }
+
+    case 'reflection': {
+      const prompts = Array.isArray(input.prompts)
+        ? input.prompts.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        : undefined
+      return { type, title, prompts: prompts?.length ? prompts : undefined }
+    }
 
     case 'theory': {
       const points = requireArray(input.points, `${path}.points`, problems).map((point, index) => {

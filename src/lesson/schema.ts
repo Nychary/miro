@@ -23,6 +23,12 @@ export interface LessonMeta {
   student?: string
   /** Язык подписей и пояснений на доске. */
   language: 'ru' | 'en'
+  /**
+   * Стиль оформления, как его назвал репетитор: «Барби», «Космос», «Детектив».
+   * Нейросеть выдерживает в нём формулировки, рендерер по нему подбирает
+   * палитру. Неизвестные названия допустимы — тогда палитра стандартная.
+   */
+  style?: string
 }
 
 export interface Lesson {
@@ -34,6 +40,8 @@ export type Block =
   | ObjectivesBlock
   | WarmupBlock
   | TheoryBlock
+  | MindmapBlock
+  | ReflectionBlock
   | FormulasBlock
   | ExampleBlock
   | TasksBlock
@@ -79,6 +87,34 @@ export interface TheoryPoint {
   /** Развёрнутое пояснение на 1–3 предложения. */
   body: string
 }
+
+/**
+ * Интеллект-карта нового материала: центральное понятие и ветки-кластеры.
+ * На доске рисуется центром с расходящимися карточками и соединительными
+ * линиями — формат «Упражнение 2: новый материал» из плана репетитора.
+ */
+export interface MindmapBlock extends BlockBase<'mindmap'> {
+  /** Центральное понятие: «Закон Ома», «Past Simple». */
+  center: string
+  branches: MindmapBranch[]
+}
+
+export interface MindmapBranch {
+  label: string
+  /** Тезисы ветки: 1–4 коротких пункта. */
+  children: string[]
+}
+
+/**
+ * Рефлексия в конце урока: колонки, в которые ученик пишет на пустых
+ * стикерах, что было легко, что сложно и что хочется узнать.
+ */
+export interface ReflectionBlock extends BlockBase<'reflection'> {
+  /** Подписи колонок. Если не заданы, берутся стандартные три. */
+  prompts?: string[]
+}
+
+export const REFLECTION_DEFAULT_PROMPTS = ['Было легко', 'Было сложно', 'Хочу узнать больше']
 
 /** Итог урока: что усвоили. */
 export interface SummaryBlock extends BlockBase<'summary'> {
@@ -258,6 +294,8 @@ export const DEFAULT_TITLES: Record<Block['type'], { ru: string; en: string }> =
   objectives: { ru: 'Цели урока', en: 'Objectives' },
   warmup: { ru: 'Разминка', en: 'Warm-up' },
   theory: { ru: 'Теория', en: 'Theory' },
+  mindmap: { ru: 'Новый материал', en: 'Mind map' },
+  reflection: { ru: 'Рефлексия', en: 'Reflection' },
   formulas: { ru: 'Формулы', en: 'Formulas' },
   example: { ru: 'Разбор примера', en: 'Worked example' },
   tasks: { ru: 'Задачи', en: 'Practice tasks' },

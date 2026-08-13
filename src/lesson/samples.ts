@@ -18,6 +18,8 @@ export const PHYSICS_SAMPLE: Lesson = {
     durationMin: 60,
     student: 'Пётр',
     language: 'ru',
+    // Стиль в образце — заодно проверка тёмной палитры на реальном уроке.
+    style: 'Космос',
   },
   blocks: [
     {
@@ -54,6 +56,28 @@ export const PHYSICS_SAMPLE: Lesson = {
         {
           heading: 'Сам закон',
           body: 'Сила тока на участке цепи прямо пропорциональна напряжению на этом участке и обратно пропорциональна его сопротивлению.',
+        },
+      ],
+    },
+    {
+      type: 'mindmap',
+      center: 'Закон Ома',
+      branches: [
+        {
+          label: 'Сила тока, I',
+          children: ['Заряд через сечение за секунду', 'Измеряется амперметром', 'I = U / R'],
+        },
+        {
+          label: 'Напряжение, U',
+          children: ['Работа поля по переносу заряда', 'Измеряется вольтметром', 'U = I · R'],
+        },
+        {
+          label: 'Сопротивление, R',
+          children: ['Свойство самого проводника', 'R = ρ · L / S'],
+        },
+        {
+          label: 'Соединения',
+          children: ['Последовательно: R = R₁ + R₂', 'Параллельно: 1/R = 1/R₁ + 1/R₂'],
         },
       ],
     },
@@ -179,6 +203,10 @@ export const PHYSICS_SAMPLE: Lesson = {
       ],
     },
     {
+      type: 'reflection',
+      prompts: ['Освоено', 'Требует дозаправки', 'Курс на следующую миссию'],
+    },
+    {
       type: 'homework',
       items: [
         'Три задачи на прямое применение закона Ома — по одной на каждую из трёх величин',
@@ -216,6 +244,7 @@ export const ENGLISH_SAMPLE: Lesson = {
     durationMin: 60,
     student: 'Аня',
     language: 'ru',
+    style: 'Барби',
   },
   blocks: [
     {
@@ -310,6 +339,9 @@ export const ENGLISH_SAMPLE: Lesson = {
         'What did you eat there that you had never tried before?',
         'Would you go back? Why or why not?',
       ],
+    },
+    {
+      type: 'reflection',
     },
     {
       type: 'summary',

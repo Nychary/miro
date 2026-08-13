@@ -35,6 +35,16 @@ describe('полнота экспорта', () => {
     expect(html).toContain('Last summer we ___ to Italy by train.')
   })
 
+  it('интеллект-карта и рефлексия попадают в файл', () => {
+    const physics = lessonToHtml(PHYSICS_SAMPLE)
+    expect(physics).toContain('Закон Ома</div>')
+    expect(physics).toContain('Требует дозаправки')
+    expect(physics).toContain('стиль: Космос')
+
+    const english = lessonToHtml(ENGLISH_SAMPLE)
+    expect(english).toContain('Было легко')
+  })
+
   it('ответы попадают в файл и помечены для преподавателя', () => {
     const html = lessonToHtml(PHYSICS_SAMPLE)
     expect(html).toContain('для преподавателя')

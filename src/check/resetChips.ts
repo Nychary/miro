@@ -1,6 +1,6 @@
 import type { Frame, Shape, StickyNote } from '@mirohq/websdk-types'
 import { loadExercises, type ChipRecord } from '../render/metadata'
-import { color } from '../render/theme'
+import { applyStyle, color } from '../render/theme'
 
 /**
  * Возвращает карточки на исходные места и снимает подсветку проверки.
@@ -12,6 +12,9 @@ import { color } from '../render/theme'
 export async function resetChips(frame: Frame): Promise<number> {
   const data = await loadExercises(frame.id)
   if (!data) throw new Error('В этом уроке нет заданий с проверкой.')
+
+  // Зоны возвращаются к виду «до проверки» в палитре своего урока.
+  applyStyle(data.style)
 
   const chips = data.exercises.flatMap((exercise) => exercise.chips)
   const zoneIds = data.exercises.flatMap((exercise) => exercise.zones.map((zone) => zone.id))

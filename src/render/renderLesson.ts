@@ -1,10 +1,10 @@
-import type { Frame } from '@mirohq/websdk-types'
+import type { Connector, Frame } from '@mirohq/websdk-types'
 import type { AnswersBlock, Block, Lesson } from '../lesson/schema'
 import { renderBlock } from './blocks'
 import { Canvas, bold, escapeHtml, paragraphs, type CanvasItem } from './canvas'
 import { card, section } from './composition'
 import { saveExercises } from './metadata'
-import { ANSWERS_OFFSET_X, CONTENT_WIDTH, FRAME_PADDING, color, font, gap } from './theme'
+import { ANSWERS_OFFSET_X, CONTENT_WIDTH, FRAME_PADDING, applyStyle, color, font, gap } from './theme'
 
 export interface RenderResult {
   frame: Frame
@@ -31,6 +31,11 @@ export interface RenderOptions {
  * по фактическим габаритам.
  */
 export async function renderLesson(lesson: Lesson, options: RenderOptions = {}): Promise<RenderResult> {
+  // Палитра подменяется до первого объекта: весь урок, включая фрейм и
+  // ответы, рисуется в одном стиле. Названный в meta.style стиль пришёл
+  // от репетитора через промпт.
+  applyStyle(lesson.meta.style)
+
   const origin = await findOrigin(lesson)
 
   const canvas = new Canvas({
@@ -67,7 +72,12 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
     // доске: он позволяет проверке найти нужные объекты одним запросом вместо
     // перебора сотни элементов урока.
     if (canvas.exercises.length > 0) {
-      await saveExercises({ frameId: frame.id, topic: lesson.meta.topic, exercises: canvas.exercises })
+      await saveExercises({
+        frameId: frame.id,
+        topic: lesson.meta.topic,
+        ...(lesson.meta.style ? { style: lesson.meta.style } : {}),
+        exercises: canvas.exercises,
+      })
     }
 
     if (answersCanvas && !answersCanvas.isEmpty) {
@@ -85,14 +95,20 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
     // Урок рисуется десятками отдельных вызовов, и падение на середине
     // оставляет на доске бессмысленную россыпь объектов, которую репетитору
     // пришлось бы вычищать руками. Прибираем за собой и отдаём ошибку дальше.
-    await discard([...canvas.items, ...(answersCanvas?.items ?? []), frame, answersFrame])
+    await discard([
+      ...canvas.items,
+      ...canvas.connectors,
+      ...(answersCanvas?.items ?? []),
+      frame,
+      answersFrame,
+    ])
     throw error
   }
 }
 
 /** Удаляет всё созданное. Ошибки удаления гасим: на уборке они уже не важны. */
-async function discard(items: (CanvasItem | Frame | null)[]): Promise<void> {
-  const present = items.filter((item): item is CanvasItem | Frame => item !== null)
+async function discard(items: (CanvasItem | Connector | Frame | null)[]): Promise<void> {
+  const present = items.filter((item): item is CanvasItem | Connector | Frame => item !== null)
 
   const BATCH = 10
   for (let index = 0; index < present.length; index += BATCH) {
@@ -162,9 +178,10 @@ async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Pr
 
   // Подложки идут первыми: если Miro раскладывает слои по порядку детей,
   // содержимое карточек окажется поверх своих подложек, а не под ними.
+  // Коннекторы — сразу после подложек, под содержимым.
   const backdropIds = new Set(canvas.backdrops.map((item) => item.id))
   const content = canvas.items.filter((item) => !backdropIds.has(item.id))
-  const ordered = [...canvas.backdrops, ...content]
+  const ordered = [...canvas.backdrops, ...canvas.connectors, ...content]
 
   const frame = await miro.board.createFrame({
     title,
@@ -196,7 +213,7 @@ async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Pr
  * нельзя: если объекты не прикрепились, урок рассыплется при перемещении фрейма.
  * Поэтому недостающие добавляются явно.
  */
-async function ensureChildren(frame: Frame, items: CanvasItem[]): Promise<void> {
+async function ensureChildren(frame: Frame, items: (CanvasItem | Connector)[]): Promise<void> {
   const attached = new Set((await frame.getChildren()).map((child) => child.id))
   const missing = items.filter((item) => !attached.has(item.id))
   if (missing.length === 0) return
@@ -249,6 +266,10 @@ function estimateBlockHeight(block: Block): number {
       return sectionOverhead + Math.ceil(block.prompts.length / 3) * 220
     case 'theory':
       return sectionOverhead + block.points.length * 240
+    case 'mindmap':
+      return sectionOverhead + 200 + Math.ceil(block.branches.length / 2) * 260
+    case 'reflection':
+      return sectionOverhead + 700
     case 'formulas':
       return sectionOverhead + Math.ceil(block.items.length / 2) * 320
     case 'example':

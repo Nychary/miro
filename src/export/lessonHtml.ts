@@ -7,12 +7,14 @@ import type {
   GrammarBlock,
   Lesson,
   MatchingBlock,
+  MindmapBlock,
+  ReflectionBlock,
   SortingBlock,
   TasksBlock,
   TheoryBlock,
   VocabularyBlock,
 } from '../lesson/schema'
-import { titleFor } from '../lesson/schema'
+import { REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/schema'
 import { shuffle } from '../render/composition'
 
 /**
@@ -40,6 +42,7 @@ export function lessonToHtml(lesson: Lesson): string {
     meta.level,
     `${meta.durationMin} мин`,
     meta.student ? `ученик: ${meta.student}` : null,
+    meta.style ? `стиль: ${meta.style}` : null,
     new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date()),
   ].filter((part): part is string => Boolean(part))
 
@@ -88,6 +91,10 @@ function renderBlock(block: Block, lesson: Lesson): string {
       return section(title, list(block.items))
     case 'theory':
       return section(title, theory(block))
+    case 'mindmap':
+      return section(title, mindmap(block))
+    case 'reflection':
+      return section(title, reflection(block))
     case 'formulas':
       return section(title, formulas(block))
     case 'example':
@@ -107,6 +114,19 @@ function renderBlock(block: Block, lesson: Lesson): string {
     case 'answers':
       return ''
   }
+}
+
+function mindmap(block: MindmapBlock): string {
+  return `<div class="card center">${esc(block.center)}</div>
+<div class="grid2">${block.branches
+    .map((branch) => `<div class="card"><h3>${esc(branch.label)}</h3>${list(branch.children)}</div>`)
+    .join('')}</div>`
+}
+
+function reflection(block: ReflectionBlock): string {
+  const prompts = block.prompts?.length ? block.prompts : REFLECTION_DEFAULT_PROMPTS
+  return `<table class="exercise"><tr>${prompts.map((prompt) => `<th>${esc(prompt)}</th>`).join('')}</tr>
+<tr>${prompts.map(() => '<td class="blank tall"></td>').join('')}</tr></table>`
 }
 
 function theory(block: TheoryBlock): string {
@@ -275,6 +295,8 @@ ul, ol { margin: 0 0 8px; padding-left: 22px; }
 .card.task.easy { background: #f0f9ec; border-color: #b5dfa6; }
 .card.task.hard { background: #fdeef4; border-color: #f0b4cd; }
 .card.vocab { background: #eef6ff; border-color: #bcd9f7; }
+.card.center { background: #4262ff; border-color: #4262ff; color: #fff; text-align: center;
+  font-weight: 600; font-size: 17px; width: 60%; margin: 0 auto 12px; }
 .tr { font-weight: 400; color: #6b7280; }
 .grid2, .grid3 { display: grid; gap: 10px; }
 .grid2 { grid-template-columns: repeat(2, 1fr); }

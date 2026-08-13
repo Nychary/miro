@@ -7,7 +7,9 @@ import type {
   HomeworkBlock,
   Lesson,
   MatchingBlock,
+  MindmapBlock,
   ObjectivesBlock,
+  ReflectionBlock,
   SortingBlock,
   SpeakingBlock,
   SummaryBlock,
@@ -16,9 +18,9 @@ import type {
   VocabularyBlock,
   WarmupBlock,
 } from '../lesson/schema'
-import { GAP_MARKER, titleFor } from '../lesson/schema'
+import { GAP_MARKER, REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/schema'
 import { Canvas, bold, bullets, escapeHtml, numbered, paragraphs } from './canvas'
-import { card, cellWidth, dropZone, grid, rows, section, shuffle } from './composition'
+import { card, cellWidth, columns, dropZone, grid, rows, section, shuffle } from './composition'
 import { tagItem, type ChipRecord, type ZoneRecord } from './metadata'
 import { color, font, gap, size, sticky } from './theme'
 
@@ -38,6 +40,10 @@ export async function renderBlock(canvas: Canvas, block: Block, lesson: Lesson):
       return renderWarmup(canvas, block, title)
     case 'theory':
       return renderTheory(canvas, block, title)
+    case 'mindmap':
+      return renderMindmap(canvas, block, title)
+    case 'reflection':
+      return renderReflection(canvas, block, title)
     case 'formulas':
       return renderFormulas(canvas, block, title)
     case 'example':
@@ -103,6 +109,86 @@ async function renderTheory(canvas: Canvas, block: TheoryBlock, title: string): 
       await canvas.text(paragraphs(escapeHtml(point.body)), inner)
     })
   }
+}
+
+/**
+ * Интеллект-карта: центральное понятие, вокруг — карточки веток,
+ * соединённые с центром линиями. Ветки идут сеткой в две колонки под
+ * центром: настоящая радиальная раскладка на колоночном потоке нечитаема,
+ * а «центр сверху, кластеры снизу» выглядит как карта и не ломает поток.
+ */
+async function renderMindmap(canvas: Canvas, block: MindmapBlock, title: string): Promise<void> {
+  await section(canvas, title)
+
+  const centerWidth = canvas.width * 0.5
+  const center = await canvas.shape({
+    left: canvas.left + (canvas.width - centerWidth) / 2,
+    width: centerWidth,
+    height: 110,
+    shape: 'round_rectangle',
+    content: bold(block.center),
+    fillColor: color.accent,
+    textColor: '#ffffff',
+    fontSize: font.cardTitle,
+    gapAfter: gap.lg,
+  })
+
+  const branchCards: import('@mirohq/websdk-types').Shape[] = []
+
+  await rows(canvas, block.branches.length, 2, async (index, column) => {
+    const branch = block.branches[index]
+    if (!branch) return
+
+    const top = column.top
+    await card(column, { fillColor: color.theoryFill, borderColor: color.theoryBorder }, async (inner) => {
+      await column.text(bold(branch.label), { ...inner, size: font.cardTitle, gapAfter: gap.xs })
+      await column.text(bullets(branch.children), { ...inner, size: font.small })
+    })
+
+    // Подложка карточки — последний элемент, добавленный в column.backdrops.
+    const backdrop = column.backdrops.at(-1)
+    if (backdrop && column.top > top) branchCards.push(backdrop)
+  })
+
+  for (const branchCard of branchCards) {
+    await canvas.connect(center, branchCard)
+  }
+}
+
+/**
+ * Рефлексия: колонки с подписями и пустыми стикерами — ученик пишет на них
+ * сам. Проверки здесь нет намеренно: смысл упражнения в свободном ответе.
+ */
+async function renderReflection(canvas: Canvas, block: ReflectionBlock, title: string): Promise<void> {
+  await section(canvas, title)
+
+  const prompts = block.prompts?.length ? block.prompts : REFLECTION_DEFAULT_PROMPTS
+  const stickyColors = [sticky.reflection1, sticky.reflection2, sticky.reflection3]
+
+  await columns(canvas, prompts.length, {}, async (index, column) => {
+    await column.shape({
+      width: column.width,
+      height: 90,
+      shape: 'round_rectangle',
+      content: bold(prompts[index] ?? ''),
+      fillColor: color.accent,
+      textColor: '#ffffff',
+      fontSize: font.cardTitle,
+      gapAfter: gap.sm,
+    })
+
+    for (let slot = 0; slot < 2; slot += 1) {
+      const note = await column.sticky({
+        left: column.left + (column.width - size.stickyWidth) / 2,
+        top: column.top,
+        width: size.stickyWidth,
+        shape: 'square',
+        content: '',
+        fillColor: stickyColors[index % stickyColors.length] ?? 'light_yellow',
+      })
+      column.top = note.y + note.height / 2 + gap.sm
+    }
+  })
 }
 
 async function renderSummary(canvas: Canvas, block: SummaryBlock, title: string): Promise<void> {

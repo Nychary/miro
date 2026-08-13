@@ -1,0 +1,55 @@
+import { describe, expect, it } from 'vitest'
+import { buildPrompt, looksLikePrompt, type LessonRequest } from './prompt'
+
+const BASE: LessonRequest = {
+  subject: 'physics',
+  topic: 'Закон Ома',
+  level: '8 класс',
+  durationMin: 60,
+  language: 'ru',
+}
+
+describe('секция стиля', () => {
+  it('появляется, когда стиль задан, и требует вернуть его в meta.style', () => {
+    const prompt = buildPrompt({ ...BASE, style: 'Гарри Поттер' })
+    expect(prompt).toContain('Стиль оформления: «Гарри Поттер»')
+    expect(prompt).toContain('meta.style')
+  })
+
+  it('не появляется без стиля', () => {
+    expect(buildPrompt(BASE)).not.toContain('Стиль оформления')
+  })
+})
+
+describe('шаблон из пяти упражнений', () => {
+  it('строит структуру Лады с её названиями упражнений', () => {
+    const prompt = buildPrompt({ ...BASE, template: 'five', prevTopic: 'Сила тока' })
+    expect(prompt).toContain('Вспоминаем')
+    expect(prompt).toContain('«Сила тока»')
+    expect(prompt).toContain('mindmap')
+    expect(prompt).toContain('reflection')
+    expect(prompt).toContain('Игра')
+  })
+
+  it('для английского практика — заполнение пропусков', () => {
+    const prompt = buildPrompt({ ...BASE, subject: 'english', level: 'B1', template: 'five' })
+    expect(prompt).toContain('gapfill')
+    expect(prompt).not.toContain('4 задачи')
+  })
+
+  it('классический шаблон остаётся прежним', () => {
+    const prompt = buildPrompt({ ...BASE, template: 'classic' })
+    expect(prompt).toContain('блоки строго в этом порядке')
+  })
+})
+
+describe('опознание собственного промпта', () => {
+  it('узнаёт промпт любого шаблона', () => {
+    expect(looksLikePrompt(buildPrompt(BASE))).toBe(true)
+    expect(looksLikePrompt(buildPrompt({ ...BASE, template: 'five' }))).toBe(true)
+  })
+
+  it('не путает с обычным ответом', () => {
+    expect(looksLikePrompt('{"meta": {}, "blocks": []}')).toBe(false)
+  })
+})

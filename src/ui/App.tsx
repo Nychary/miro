@@ -9,6 +9,7 @@ import { SAMPLES } from '../lesson/samples'
 import type { Lesson, Subject } from '../lesson/schema'
 import { parseLessonResponse } from '../lesson/validate'
 import { renderLesson } from '../render/renderLesson'
+import { STYLE_SUGGESTIONS } from '../render/theme'
 
 const DEFAULT_LEVEL: Record<Subject, string> = {
   physics: '8 класс',
@@ -32,6 +33,11 @@ export function App() {
   const [durationMin, setDurationMin] = useState(60)
   const [student, setStudent] = useState('')
   const [studentNotes, setStudentNotes] = useState('')
+  const [style, setStyle] = useState('')
+  // План из пяти упражнений — авторская структура репетитора, поэтому
+  // он и по умолчанию: классическая остаётся как запасная.
+  const [template, setTemplate] = useState<'five' | 'classic'>('five')
+  const [prevTopic, setPrevTopic] = useState('')
 
   const [prompt, setPrompt] = useState('')
   const [copied, setCopied] = useState(false)
@@ -86,8 +92,11 @@ export function App() {
       level: level.trim(),
       durationMin,
       language: 'ru',
+      template,
       ...(student.trim() ? { student: student.trim() } : {}),
       ...(studentNotes.trim() ? { studentNotes: studentNotes.trim() } : {}),
+      ...(style.trim() ? { style: style.trim() } : {}),
+      ...(prevTopic.trim() ? { prevTopic: prevTopic.trim() } : {}),
     }
     setPrompt(buildPrompt(request))
     setCopied(false)
@@ -278,6 +287,43 @@ export function App() {
         </div>
 
         <label>
+          Структура урока
+          <select
+            value={template}
+            onChange={(event) => setTemplate(event.target.value as 'five' | 'classic')}
+          >
+            <option value="five">5 упражнений: Вспоминаем · Материал · Практика · Игра · Рефлексия</option>
+            <option value="classic">Классическая: теория · формулы · задачи · интерактивы</option>
+          </select>
+        </label>
+
+        {template === 'five' && (
+          <label>
+            Прошлая тема <span className="optional">для упражнения «Вспоминаем»</span>
+            <input
+              value={prevTopic}
+              onChange={(event) => setPrevTopic(event.target.value)}
+              placeholder={subject === 'physics' ? 'например, Сила тока' : 'например, Present Simple'}
+            />
+          </label>
+        )}
+
+        <label>
+          Стиль оформления <span className="optional">необязательно</span>
+          <input
+            list="style-suggestions"
+            value={style}
+            onChange={(event) => setStyle(event.target.value)}
+            placeholder="например, Гарри Поттер — цвета и формулировки"
+          />
+          <datalist id="style-suggestions">
+            {STYLE_SUGGESTIONS.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </label>
+
+        <label>
           Ученик <span className="optional">необязательно</span>
           <input
             value={student}
@@ -454,9 +500,11 @@ export function App() {
         <summary>Образцы для проверки вёрстки</summary>
         <button type="button" disabled={busy} onClick={() => void draw(SAMPLES.physics)}>
           Физика: закон Ома
+          <span className="hint">стиль «Космос», интеллект-карта, рефлексия</span>
         </button>
         <button type="button" disabled={busy} onClick={() => void draw(SAMPLES.english)}>
           Английский: Past Simple
+          <span className="hint">стиль «Барби», три интерактива, рефлексия</span>
         </button>
       </details>
     </>
