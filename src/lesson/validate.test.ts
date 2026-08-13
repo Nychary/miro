@@ -118,7 +118,15 @@ describe('проверка содержимого', () => {
   it('разбирает интеллект-карту и рефлексию', () => {
     const result = parseLessonResponse(
       JSON.stringify({
-        meta: { subject: 'physics', topic: 'Т', level: '8', durationMin: 60, language: 'ru', style: 'Космос' },
+        meta: {
+          subject: 'physics',
+          topic: 'Т',
+          level: '8',
+          durationMin: 60,
+          language: 'ru',
+          style: 'Космос',
+          styleEmoji: ['⭐', '🪐', '', 42, 'слишком-длинная-строка-не-эмодзи'],
+        },
         blocks: [
           {
             type: 'mindmap',
@@ -133,6 +141,8 @@ describe('проверка содержимого', () => {
     if (!result.ok) throw new Error(result.errors.join('; '))
 
     expect(result.lesson.meta.style).toBe('Космос')
+    // Мусор в styleEmoji отбрасывается молча: пустые строки, числа, длинное.
+    expect(result.lesson.meta.styleEmoji).toEqual(['⭐', '🪐'])
     const [mindmap, withPrompts, bare] = result.lesson.blocks
     expect(mindmap).toMatchObject({ type: 'mindmap', center: 'Закон Ома' })
     expect(withPrompts).toMatchObject({ type: 'reflection', prompts: ['Освоено', 'Сложно', 'Хочу ещё'] })

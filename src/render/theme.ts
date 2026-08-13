@@ -126,11 +126,17 @@ interface StylePreset {
   keys: string[]
   color: Partial<ColorTheme>
   sticky: Partial<Record<StickyKey, StickyNoteColorType>>
+  /**
+   * Эмодзи-декорации, рассыпаемые фоном по фрейму урока. Для стилей вне
+   * этого списка набор присылает нейросеть в meta.styleEmoji.
+   */
+  decor: string[]
 }
 
 const PRESETS: Record<string, StylePreset> = {
   barbie: {
     keys: ['барби', 'barbie', 'розов'],
+    decor: ['💖', '✨', '👑', '🎀', '💅'],
     color: {
       accent: '#e0218a',
       theoryFill: '#ffe9f4',
@@ -154,6 +160,7 @@ const PRESETS: Record<string, StylePreset> = {
   },
   potter: {
     keys: ['поттер', 'хогвартс', 'potter', 'hogwarts', 'магия', 'волшеб'],
+    decor: ['⚡', '🪄', '🦉', '🏰', '📜', '✨'],
     color: {
       accent: '#740001',
       theoryFill: '#f7efdd',
@@ -177,6 +184,7 @@ const PRESETS: Record<string, StylePreset> = {
   },
   minecraft: {
     keys: ['майнкрафт', 'minecraft', 'пиксел'],
+    decor: ['⛏️', '💎', '🧱', '🌳', '🟩'],
     color: {
       accent: '#3c8527',
       theoryFill: '#eaf4e2',
@@ -200,6 +208,7 @@ const PRESETS: Record<string, StylePreset> = {
   },
   space: {
     keys: ['космос', 'space', 'галактик', 'звёзд', 'звезд'],
+    decor: ['⭐', '🪐', '🌙', '✨', '🚀', '☄️'],
     color: {
       ink: '#eef1ff',
       muted: '#a7b0d8',
@@ -231,6 +240,7 @@ const PRESETS: Record<string, StylePreset> = {
   },
   detective: {
     keys: ['детектив', 'detective', 'шерлок', 'sherlock', 'нуар'],
+    decor: ['🔍', '🕵️', '🗝️', '📁', '🔦'],
     color: {
       accent: '#1f1f1f',
       theoryFill: '#fdf6d8',
@@ -267,17 +277,24 @@ export function applyStyle(styleName?: string): void {
   Object.assign(color, DEFAULT_COLOR)
   Object.assign(sticky, DEFAULT_STICKY)
 
-  if (!styleName) return
-  const needle = styleName.trim().toLowerCase()
-  if (!needle) return
-
-  for (const preset of Object.values(PRESETS)) {
-    if (preset.keys.some((key) => needle.includes(key))) {
-      Object.assign(color, preset.color)
-      Object.assign(sticky, preset.sticky)
-      return
-    }
+  const preset = findPreset(styleName)
+  if (preset) {
+    Object.assign(color, preset.color)
+    Object.assign(sticky, preset.sticky)
   }
+}
+
+/** Эмодзи-декорации для известного стиля. Пусто — фон остаётся чистым. */
+export function styleDecor(styleName?: string): string[] {
+  return findPreset(styleName)?.decor ?? []
+}
+
+function findPreset(styleName?: string): StylePreset | null {
+  if (!styleName) return null
+  const needle = styleName.trim().toLowerCase()
+  if (!needle) return null
+
+  return Object.values(PRESETS).find((preset) => preset.keys.some((key) => needle.includes(key))) ?? null
 }
 
 /** Размеры типовых элементов. */

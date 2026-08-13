@@ -64,6 +64,7 @@ export function lessonToHtml(lesson: Lesson): string {
 <header>
   <h1>${esc(meta.topic)}</h1>
   <p class="meta">${esc(details.join(' · '))}</p>
+  ${meta.styleEmoji?.length ? `<p class="deco">${meta.styleEmoji.map(esc).join(' ')}</p>` : ''}
 </header>
 ${body}
 ${answers ? renderAnswers(answers, lesson) : ''}
@@ -284,6 +285,7 @@ h4 { margin: 12px 0 4px; font-size: 14px; }
 p { margin: 0 0 8px; }
 ul, ol { margin: 0 0 8px; padding-left: 22px; }
 .meta, .muted { color: #6b7280; }
+.deco { font-size: 20px; letter-spacing: 6px; }
 .small { font-size: 13px; color: #6b7280; }
 .card { margin-bottom: 10px; padding: 12px 14px; border: 1px solid #c9d4ff; border-radius: 10px; background: #f2f5ff;
   break-inside: avoid; }

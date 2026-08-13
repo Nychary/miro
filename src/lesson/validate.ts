@@ -202,8 +202,20 @@ function validateMeta(input: unknown, problems: Problems): Lesson['meta'] | null
     durationMin: duration,
     ...(optionalString(input.student) ? { student: optionalString(input.student) as string } : {}),
     ...(optionalString(input.style) ? { style: optionalString(input.style) as string } : {}),
+    ...(styleEmojiOf(input.styleEmoji) ? { styleEmoji: styleEmojiOf(input.styleEmoji) as string[] } : {}),
     language,
   }
+}
+
+/** До восьми коротких строк-эмодзи; всё остальное молча отбрасывается. */
+function styleEmojiOf(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const emoji = value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && item.length <= 8)
+    .slice(0, 8)
+  return emoji.length > 0 ? emoji : undefined
 }
 
 function validateBlock(input: unknown, path: string, problems: Problems): Block | null {

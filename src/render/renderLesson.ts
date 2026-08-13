@@ -1,10 +1,19 @@
-import type { Connector, Frame } from '@mirohq/websdk-types'
+import type { Connector, Frame, Text } from '@mirohq/websdk-types'
 import type { AnswersBlock, Block, Lesson } from '../lesson/schema'
 import { renderBlock } from './blocks'
 import { Canvas, bold, escapeHtml, paragraphs, type CanvasItem } from './canvas'
 import { card, section } from './composition'
 import { saveExercises } from './metadata'
-import { ANSWERS_OFFSET_X, CONTENT_WIDTH, FRAME_PADDING, applyStyle, color, font, gap } from './theme'
+import {
+  ANSWERS_OFFSET_X,
+  CONTENT_WIDTH,
+  FRAME_PADDING,
+  applyStyle,
+  color,
+  font,
+  gap,
+  styleDecor,
+} from './theme'
 
 export interface RenderResult {
   frame: Frame
@@ -47,6 +56,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
   let answersCanvas: Canvas | null = null
   let frame: Frame | null = null
   let answersFrame: Frame | null = null
+  let decorations: Text[] = []
 
   try {
     await renderHeader(canvas, lesson)
@@ -54,6 +64,16 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
     for (const block of lesson.blocks) {
       if (block.type === 'answers') continue
       await renderBlock(canvas, block, lesson)
+    }
+
+    // Декорации рассыпаются по всей площади урока и уходят в самый низ
+    // стопки детей фрейма — под карточки. Видны они в просветах между
+    // секциями и по краям, и это ровно эффект тематической подложки.
+    const decorEmoji = lesson.meta.styleEmoji?.length
+      ? lesson.meta.styleEmoji
+      : styleDecor(lesson.meta.style)
+    if (decorEmoji.length > 0 && !canvas.isEmpty) {
+      decorations = await scatterDecor(canvas.bbox(), decorEmoji)
     }
 
     const answersBlock = options.answersOnBoard
@@ -66,7 +86,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
       })
     }
 
-    frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill)
+    frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill, decorations)
 
     // Указатель на интерактивные задания живёт в хранилище приложения на
     // доске: он позволяет проверке найти нужные объекты одним запросом вместо
@@ -89,7 +109,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
     return {
       frame,
       answersFrame,
-      itemCount: canvas.items.length + (answersCanvas?.items.length ?? 0),
+      itemCount: canvas.items.length + decorations.length + (answersCanvas?.items.length ?? 0),
     }
   } catch (error) {
     // Урок рисуется десятками отдельных вызовов, и падение на середине
@@ -98,6 +118,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
     await discard([
       ...canvas.items,
       ...canvas.connectors,
+      ...decorations,
       ...(answersCanvas?.items ?? []),
       frame,
       answersFrame,
@@ -173,15 +194,19 @@ async function renderAnswersAside(block: AnswersBlock, origin: { left: number; t
 }
 
 /** Обводит всё содержимое канвы фреймом и складывает объекты внутрь. */
-async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Promise<Frame> {
+async function wrapInFrame(
+  canvas: Canvas,
+  title: string,
+  fillColor: string,
+  decorations: Text[] = [],
+): Promise<Frame> {
   const box = canvas.bbox()
 
-  // Подложки идут первыми: если Miro раскладывает слои по порядку детей,
-  // содержимое карточек окажется поверх своих подложек, а не под ними.
-  // Коннекторы — сразу после подложек, под содержимым.
+  // Порядок детей — это порядок слоёв: декорации в самом низу (это фон),
+  // над ними подложки карточек, потом коннекторы, сверху содержимое.
   const backdropIds = new Set(canvas.backdrops.map((item) => item.id))
   const content = canvas.items.filter((item) => !backdropIds.has(item.id))
-  const ordered = [...canvas.backdrops, ...canvas.connectors, ...content]
+  const ordered = [...decorations, ...canvas.backdrops, ...canvas.connectors, ...content]
 
   const frame = await miro.board.createFrame({
     title,
@@ -201,11 +226,50 @@ async function wrapInFrame(canvas: Canvas, title: string, fillColor: string): Pr
   // отправляет в самый низ доски, то есть под заливку фрейма, и подложка
   // становится невидимой. Поднятое содержимое оказывается над своей подложкой,
   // а обе остаются над фреймом.
-  if (canvas.backdrops.length > 0 && content.length > 0) {
+  if ((canvas.backdrops.length > 0 || decorations.length > 0) && content.length > 0) {
+    if (canvas.backdrops.length > 0) {
+      await miro.board.bringToFront(canvas.backdrops)
+    }
     await miro.board.bringToFront(content)
   }
 
   return frame
+}
+
+/**
+ * Тематический фон: эмодзи, случайно рассыпанные по площади урока.
+ * Они уходят в самый низ стопки, поэтому видны только в просветах между
+ * карточками и по краям — содержанию не мешают.
+ */
+async function scatterDecor(
+  box: { left: number; top: number; width: number; height: number },
+  emoji: string[],
+): Promise<Text[]> {
+  // Плотность подобрана на глаз: примерно одна декорация на квадрат 470×470,
+  // но не больше сорока штук — урок из ста объектов и так недёшев по вызовам.
+  const count = Math.min(40, Math.max(10, Math.round((box.width * box.height) / 220_000)))
+  const items: Text[] = []
+
+  const BATCH = 10
+  for (let start = 0; start < count; start += BATCH) {
+    const batch = await Promise.all(
+      Array.from({ length: Math.min(BATCH, count - start) }, (_, offset) => {
+        const glyph = emoji[(start + offset) % emoji.length] ?? '✨'
+        const fontSize = Math.round(28 + Math.random() * 36)
+        return miro.board.createText({
+          content: glyph,
+          x: box.left + Math.random() * box.width,
+          y: box.top + Math.random() * box.height,
+          width: fontSize * 2,
+          rotation: Math.round(Math.random() * 60 - 30),
+          style: { fontSize, textAlign: 'center' },
+        })
+      }),
+    )
+    items.push(...batch)
+  }
+
+  return items
 }
 
 /**

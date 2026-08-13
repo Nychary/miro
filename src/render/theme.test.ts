@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { applyStyle, color, sticky } from './theme'
+import { applyStyle, color, sticky, styleDecor } from './theme'
 
 /**
  * Палитра — живой объект, который подменяется перед отрисовкой.
@@ -32,6 +32,13 @@ describe('подбор палитры по названию', () => {
     applyStyle('вестерн')
     expect(color.accent).toBe('#4262ff')
     expect(color.ink).toBe('#12151a')
+  })
+
+  it('известные стили дают набор декораций, неизвестные — пустой', () => {
+    expect(styleDecor('Космос')).toContain('🪐')
+    expect(styleDecor('расследование в стиле детектива')).toContain('🔍')
+    expect(styleDecor('вестерн')).toEqual([])
+    expect(styleDecor()).toEqual([])
   })
 
   it('пустой вызов полностью откатывает предыдущий стиль', () => {
