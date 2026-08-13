@@ -115,13 +115,15 @@ function fiveStructure(request: LessonRequest): string {
   const recall = request.prevTopic?.trim()
     ? `по прошлой теме («${request.prevTopic.trim()}»)`
     : 'по знаниям, на которые опирается новая тема'
+  // Количество — с реальных занятий: на 60 минут нужно 10 задач.
+  const taskCount = request.durationMin <= 45 ? '6' : request.durationMin >= 90 ? '12–14' : '10'
 
   return [
     'Структура урока — 5 упражнений строго в этом порядке, плюс ответы:',
     `1. warmup c "title": "Вспоминаем" — 3 вопроса ${recall}`,
     '2. mindmap — новый материал интеллект-картой: центральное понятие и 3–5 веток по 2–4 коротких тезиса' +
       (physics ? '; формулы включай в тезисы веток юникодом' : ''),
-    `3. ${physics ? 'tasks c "title": "Практика" — 4 задачи по возрастанию сложности, с подсказками к трудным' : 'gapfill c "title": "Практика" — 4–5 предложений с пропусками плюс 2–3 лишних варианта'}`,
+    `3. ${physics ? `tasks c "title": "Практика" — ${taskCount} задач по возрастанию сложности, с подсказками к трудным` : 'gapfill c "title": "Практика" — 4–5 предложений с пропусками плюс 2–3 лишних варианта'}`,
     '4. matching или sorting c "title": "Игра" — одно интерактивное задание на перетаскивание',
     '5. reflection — рефлексия; можно задать свои подписи колонок в "prompts" в стиле урока',
     '6. answers — ответы ко всем заданиям практики и игры' + (physics ? ', с ходом решения' : ''),
@@ -137,7 +139,8 @@ function structure(request: LessonRequest): string {
   const scale = request.durationMin <= 45 ? 'short' : request.durationMin >= 90 ? 'long' : 'normal'
 
   if (request.subject === 'physics') {
-    const tasks = scale === 'short' ? '4' : scale === 'long' ? '8–10' : '6'
+    // Количество — с реальных занятий: на 60 минут нужно 10 задач.
+    const tasks = scale === 'short' ? '6' : scale === 'long' ? '12–14' : '10'
     return [
       'Структура урока — блоки строго в этом порядке:',
       '1. objectives — 3 цели',

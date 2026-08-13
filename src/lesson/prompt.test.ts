@@ -54,7 +54,15 @@ describe('шаблон из пяти упражнений', () => {
   it('для английского практика — заполнение пропусков', () => {
     const prompt = buildPrompt({ ...BASE, subject: 'english', level: 'B1', template: 'five' })
     expect(prompt).toContain('gapfill')
-    expect(prompt).not.toContain('4 задачи')
+    expect(prompt).not.toContain('задач по возрастанию')
+  })
+
+  it('число задач по физике растёт с длительностью — с реальных занятий', () => {
+    expect(buildPrompt({ ...BASE, template: 'five', durationMin: 60 })).toContain('10 задач')
+    expect(buildPrompt({ ...BASE, template: 'five', durationMin: 45 })).toContain('6 задач')
+    expect(buildPrompt({ ...BASE, template: 'five', durationMin: 90 })).toContain('12–14 задач')
+    // Классический шаблон масштабируется так же.
+    expect(buildPrompt({ ...BASE, template: 'classic', durationMin: 60 })).toContain('10 задач')
   })
 
   it('классический шаблон остаётся прежним', () => {
