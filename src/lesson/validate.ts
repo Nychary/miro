@@ -202,20 +202,21 @@ function validateMeta(input: unknown, problems: Problems): Lesson['meta'] | null
     durationMin: duration,
     ...(optionalString(input.student) ? { student: optionalString(input.student) as string } : {}),
     ...(optionalString(input.style) ? { style: optionalString(input.style) as string } : {}),
-    ...(styleEmojiOf(input.styleEmoji) ? { styleEmoji: styleEmojiOf(input.styleEmoji) as string[] } : {}),
+    ...(shortStrings(input.styleEmoji, 8) ? { styleEmoji: shortStrings(input.styleEmoji, 8) as string[] } : {}),
+    ...(shortStrings(input.imageIdeas, 80) ? { imageIdeas: shortStrings(input.imageIdeas, 80) as string[] } : {}),
     language,
   }
 }
 
-/** До восьми коротких строк-эмодзи; всё остальное молча отбрасывается. */
-function styleEmojiOf(value: unknown): string[] | undefined {
+/** До восьми коротких строк заданной длины; мусор молча отбрасывается. */
+function shortStrings(value: unknown, maxLength: number): string[] | undefined {
   if (!Array.isArray(value)) return undefined
-  const emoji = value
+  const strings = value
     .filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim())
-    .filter((item) => item.length > 0 && item.length <= 8)
+    .filter((item) => item.length > 0 && item.length <= maxLength)
     .slice(0, 8)
-  return emoji.length > 0 ? emoji : undefined
+  return strings.length > 0 ? strings : undefined
 }
 
 function validateBlock(input: unknown, path: string, problems: Problems): Block | null {

@@ -126,6 +126,7 @@ describe('проверка содержимого', () => {
           language: 'ru',
           style: 'Космос',
           styleEmoji: ['⭐', '🪐', '', 42, 'слишком-длинная-строка-не-эмодзи'],
+          imageIdeas: ['Ван Гог Звёздная ночь', '', 7],
         },
         blocks: [
           {
@@ -143,6 +144,7 @@ describe('проверка содержимого', () => {
     expect(result.lesson.meta.style).toBe('Космос')
     // Мусор в styleEmoji отбрасывается молча: пустые строки, числа, длинное.
     expect(result.lesson.meta.styleEmoji).toEqual(['⭐', '🪐'])
+    expect(result.lesson.meta.imageIdeas).toEqual(['Ван Гог Звёздная ночь'])
     const [mindmap, withPrompts, bare] = result.lesson.blocks
     expect(mindmap).toMatchObject({ type: 'mindmap', center: 'Закон Ома' })
     expect(withPrompts).toMatchObject({ type: 'reflection', prompts: ['Освоено', 'Сложно', 'Хочу ещё'] })

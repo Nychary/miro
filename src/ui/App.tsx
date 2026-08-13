@@ -457,6 +457,18 @@ export function App() {
               </ul>
             </>
           )}
+          {lastLesson?.meta.imageIdeas && lastLesson.meta.imageIdeas.length > 0 && (
+            <>
+              <div className="status-heading">
+                Картинки к оформлению — поищите и перетащите на доску:
+              </div>
+              <ul>
+                {lastLesson.meta.imageIdeas.map((idea) => (
+                  <li key={idea}>{idea}</li>
+                ))}
+              </ul>
+            </>
+          )}
           {!answersOnBoard && lessonAnswers && lessonAnswers.items.length > 0 && (
             <details className="answers-panel">
               <summary>Ответы — только для преподавателя</summary>

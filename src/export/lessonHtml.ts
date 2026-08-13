@@ -233,9 +233,14 @@ ${wordBank(bank)}`
 }
 
 function renderAnswers(block: AnswersBlock, lesson: Lesson): string {
+  const imageIdeas = lesson.meta.imageIdeas?.length
+    ? `<p class="muted">Картинки к оформлению: ${lesson.meta.imageIdeas.map(esc).join(' · ')}</p>`
+    : ''
+
   return `<section class="answers">
 <h2>${esc(titleFor(block, lesson.meta.language))}</h2>
 <p class="muted">Перед печатью для ученика отрежьте эту часть.</p>
+${imageIdeas}
 ${block.items
   .map(
     (entry) => `<div class="card"><h3>${esc(entry.ref.toUpperCase())} — ${esc(entry.answer)}</h3>${

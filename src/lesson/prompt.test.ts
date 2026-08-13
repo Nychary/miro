@@ -20,6 +20,25 @@ describe('секция стиля', () => {
   it('не появляется без стиля', () => {
     expect(buildPrompt(BASE)).not.toContain('Стиль оформления')
   })
+
+  it('«Стандарт» — это отсутствие стиля, а не стиль по имени', () => {
+    expect(buildPrompt({ ...BASE, style: 'Стандарт' })).not.toContain('Стиль оформления')
+  })
+
+  it('просит поисковые запросы для картинок', () => {
+    const prompt = buildPrompt({ ...BASE, style: 'Детектив' })
+    expect(prompt).toContain('meta.imageIdeas')
+    expect(prompt).toContain('поисковых запрос')
+  })
+
+  it('«Придумай тему сам» включает режим изобретения темы', () => {
+    const prompt = buildPrompt({ ...BASE, style: 'Придумай тему сам' })
+    expect(prompt).toContain('Придумай тематическую обёртку')
+    expect(prompt).toContain('Ван Гога')
+    expect(prompt).toContain('meta.imageIdeas')
+    // Название изобретённой темы должно вернуться в meta.style.
+    expect(prompt).toContain('meta.style')
+  })
 })
 
 describe('шаблон из пяти упражнений', () => {
