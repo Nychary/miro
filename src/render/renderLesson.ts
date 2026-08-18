@@ -16,9 +16,12 @@ import {
 } from './theme'
 
 export interface RenderResult {
-  frame: Frame
+  /** Null, если урок оказался слишком велик для одного фрейма Miro. */
+  frame: Frame | null
   answersFrame: Frame | null
   itemCount: number
+  /** Некритичные проблемы финальных шагов: фрейм, указатель проверки. */
+  warnings: string[]
 }
 
 export interface RenderOptions {
@@ -54,10 +57,10 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
   })
 
   let answersCanvas: Canvas | null = null
-  let frame: Frame | null = null
-  let answersFrame: Frame | null = null
   let decorations: Text[] = []
 
+  // Фаза 1: содержимое. Падение здесь оставило бы на доске бессмысленную
+  // россыпь объектов — прибираем за собой и отдаём ошибку дальше.
   try {
     await renderHeader(canvas, lesson)
 
@@ -85,46 +88,70 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
         top: origin.top + FRAME_PADDING,
       })
     }
-
-    frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill, decorations)
-
-    // Указатель на интерактивные задания живёт в хранилище приложения на
-    // доске: он позволяет проверке найти нужные объекты одним запросом вместо
-    // перебора сотни элементов урока.
-    if (canvas.exercises.length > 0) {
-      await saveExercises({
-        frameId: frame.id,
-        topic: lesson.meta.topic,
-        ...(lesson.meta.style ? { style: lesson.meta.style } : {}),
-        exercises: canvas.exercises,
-      })
-    }
-
-    if (answersCanvas && !answersCanvas.isEmpty) {
-      answersFrame = await wrapInFrame(answersCanvas, `${frameTitle(lesson)} — ответы`, color.answersFill)
-    }
-
-    await miro.board.viewport.zoomTo(frame)
-
-    return {
-      frame,
-      answersFrame,
-      itemCount: canvas.items.length + decorations.length + (answersCanvas?.items.length ?? 0),
-    }
   } catch (error) {
-    // Урок рисуется десятками отдельных вызовов, и падение на середине
-    // оставляет на доске бессмысленную россыпь объектов, которую репетитору
-    // пришлось бы вычищать руками. Прибираем за собой и отдаём ошибку дальше.
-    await discard([
-      ...canvas.items,
-      ...canvas.connectors,
-      ...decorations,
-      ...(answersCanvas?.items ?? []),
-      frame,
-      answersFrame,
-    ])
+    await discard([...canvas.items, ...canvas.connectors, ...decorations, ...(answersCanvas?.items ?? [])])
     throw error
   }
+
+  // Фаза 2: фрейм, указатель проверки, зум. Урок уже нарисован, и удалять
+  // его из-за сбоя на этих шагах нельзя — большой юнит однажды был снесён
+  // ровно так: контент удался, финальный шаг упёрся в лимит Miro, уборка
+  // уничтожила готовую работу. Теперь каждый шаг деградирует отдельно.
+  const warnings: string[] = []
+  let frame: Frame | null = null
+  let answersFrame: Frame | null = null
+
+  try {
+    frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill, decorations)
+  } catch (error) {
+    warnings.push(
+      `Урок нарисован, но не поместился в один фрейм Miro (${reason(error)}). Он лежит на доске без рамки — работать можно, двигать урок целиком придётся выделением.`,
+    )
+  }
+
+  if (canvas.exercises.length > 0) {
+    if (frame) {
+      try {
+        await saveExercises({
+          frameId: frame.id,
+          topic: lesson.meta.topic,
+          ...(lesson.meta.style ? { style: lesson.meta.style } : {}),
+          exercises: canvas.exercises,
+        })
+      } catch (error) {
+        warnings.push(
+          `Урок на доске, но указатель для проверки сохранить не удалось (${reason(error)}) — кнопки проверки для этого урока работать не будут.`,
+        )
+      }
+    } else {
+      warnings.push('Без фрейма автопроверка недоступна: ей не к чему привязать урок.')
+    }
+  }
+
+  if (answersCanvas && !answersCanvas.isEmpty) {
+    try {
+      answersFrame = await wrapInFrame(answersCanvas, `${frameTitle(lesson)} — ответы`, color.answersFill)
+    } catch (error) {
+      warnings.push(`Ответы нарисованы, но без своего фрейма (${reason(error)}).`)
+    }
+  }
+
+  try {
+    if (frame) await miro.board.viewport.zoomTo(frame)
+  } catch {
+    // Зум — чистое удобство; его сбой не стоит даже предупреждения.
+  }
+
+  return {
+    frame,
+    answersFrame,
+    itemCount: canvas.items.length + decorations.length + (answersCanvas?.items.length ?? 0),
+    warnings,
+  }
+}
+
+function reason(error: unknown): string {
+  return error instanceof Error ? error.message : 'неизвестная ошибка Miro'
 }
 
 /** Удаляет всё созданное. Ошибки удаления гасим: на уборке они уже не важны. */

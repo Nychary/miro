@@ -23,7 +23,15 @@ import type { BaseItem } from '@mirohq/websdk-types'
  */
 
 export const METADATA_KEY = 'lessonBuilder'
-export const APP_DATA_KEY = 'lessons'
+
+/**
+ * Устаревший ключ: раньше все уроки лежали одним массивом. На большом юните
+ * такой массив упирается в лимит размера значения appData, поэтому теперь
+ * каждый урок хранится под своим ключом, а под этим — только их список.
+ */
+export const LEGACY_APP_DATA_KEY = 'lessons'
+const INDEX_KEY = 'lessons:index'
+const LESSON_KEY_PREFIX = 'lesson:'
 
 /**
  * Сколько уроков помним. Доска ученика живёт годами, а указатель нужен только
@@ -101,27 +109,56 @@ export interface LessonExercises {
 }
 
 export async function saveExercises(data: LessonExercises): Promise<void> {
-  const stored = await readStore()
-  const withoutThis = stored.filter((entry) => entry.frameId !== data.frameId)
+  const index = await readIndex()
+  const updated = [...index.filter((id) => id !== data.frameId), data.frameId]
 
-  await miro.board.setAppData(APP_DATA_KEY, [...withoutThis, data].slice(-HISTORY_LIMIT) as unknown as MetadataValue)
+  // Вытесненным из истории урокам затираем и данные, чтобы хранилище не росло.
+  const evicted = updated.slice(0, Math.max(0, updated.length - HISTORY_LIMIT))
+  const kept = updated.slice(-HISTORY_LIMIT)
+
+  await miro.board.setAppData(LESSON_KEY_PREFIX + data.frameId, data as unknown as MetadataValue)
+  await miro.board.setAppData(INDEX_KEY, kept as unknown as MetadataValue)
+  for (const id of evicted) {
+    await miro.board.setAppData(LESSON_KEY_PREFIX + id, null)
+  }
 }
 
 export async function loadExercises(frameId: string): Promise<LessonExercises | null> {
-  const stored = await readStore()
-  return stored.find((entry) => entry.frameId === frameId) ?? null
+  const raw = await miro.board.getAppData(LESSON_KEY_PREFIX + frameId)
+  const entry = asLesson(raw)
+  if (entry) return entry
+
+  // Уроки, сохранённые до перехода на поключевое хранение.
+  return (await readLegacy()).find((item) => item.frameId === frameId) ?? null
 }
 
 /** Все уроки с заданиями, о которых знает доска. Свежие — в конце. */
 export async function listExercises(): Promise<LessonExercises[]> {
-  return readStore()
+  const index = await readIndex()
+  const entries: LessonExercises[] = []
+  for (const frameId of index) {
+    const entry = asLesson(await miro.board.getAppData(LESSON_KEY_PREFIX + frameId))
+    if (entry) entries.push(entry)
+  }
+
+  const known = new Set(entries.map((entry) => entry.frameId))
+  const legacy = (await readLegacy()).filter((entry) => !known.has(entry.frameId))
+  return [...legacy, ...entries]
 }
 
-async function readStore(): Promise<LessonExercises[]> {
-  const raw = await miro.board.getAppData(APP_DATA_KEY)
-  if (!Array.isArray(raw)) return []
+async function readIndex(): Promise<string[]> {
+  const raw = await miro.board.getAppData(INDEX_KEY)
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []
+}
 
-  return (raw as unknown as LessonExercises[]).filter(
-    (entry) => entry && typeof entry.frameId === 'string' && Array.isArray(entry.exercises),
-  )
+async function readLegacy(): Promise<LessonExercises[]> {
+  const raw = await miro.board.getAppData(LEGACY_APP_DATA_KEY)
+  if (!Array.isArray(raw)) return []
+  return (raw as unknown[]).map(asLesson).filter((entry): entry is LessonExercises => entry !== null)
+}
+
+function asLesson(raw: unknown): LessonExercises | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const entry = raw as LessonExercises
+  return typeof entry.frameId === 'string' && Array.isArray(entry.exercises) ? entry : null
 }

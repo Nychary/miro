@@ -132,7 +132,7 @@ export function App() {
         message: `Готово: ${result.itemCount} объектов${
           result.answersFrame ? ', ответы в отдельном фрейме справа' : ', ответы — ниже в панели'
         }.`,
-        warnings,
+        warnings: [...warnings, ...result.warnings],
       })
     } catch (error) {
       setStatus({
