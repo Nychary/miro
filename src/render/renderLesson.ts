@@ -32,6 +32,11 @@ export interface RenderOptions {
    * репетитора ученику не видна, поэтому ответы безопаснее показывать там.
    */
   answersOnBoard?: boolean
+  /**
+   * Прогресс для панели. Большой урок рисуется минутами, и без этих
+   * сообщений «медленно работает» неотличимо от «зависло».
+   */
+  onProgress?: (message: string) => void
 }
 
 /**
@@ -61,11 +66,15 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
 
   // Фаза 1: содержимое. Падение здесь оставило бы на доске бессмысленную
   // россыпь объектов — прибираем за собой и отдаём ошибку дальше.
+  const progress = options.onProgress ?? (() => undefined)
+  const drawable = lesson.blocks.filter((block) => block.type !== 'answers')
+
   try {
+    progress('Заголовок урока…')
     await renderHeader(canvas, lesson)
 
-    for (const block of lesson.blocks) {
-      if (block.type === 'answers') continue
+    for (const [index, block] of drawable.entries()) {
+      progress(`Блок ${index + 1} из ${drawable.length}: ${titleFor(block, lesson.meta.language)}`)
       await renderBlock(canvas, block, lesson)
     }
 
@@ -76,6 +85,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
       ? lesson.meta.styleEmoji
       : styleDecor(lesson.meta.style)
     if (decorEmoji.length > 0 && !canvas.isEmpty) {
+      progress('Декорации…')
       decorations = await scatterDecor(canvas.bbox(), decorEmoji)
     }
 
@@ -83,6 +93,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
       ? lesson.blocks.find((block): block is AnswersBlock => block.type === 'answers')
       : undefined
     if (answersBlock) {
+      progress('Фрейм с ответами…')
       answersCanvas = await renderAnswersAside(answersBlock, lesson, {
         left: origin.left + ANSWERS_OFFSET_X,
         top: origin.top + FRAME_PADDING,
@@ -102,6 +113,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
   let answersFrame: Frame | null = null
 
   try {
+    progress(`Собираю ${canvas.items.length} объектов во фрейм…`)
     frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill, decorations)
   } catch (error) {
     warnings.push(

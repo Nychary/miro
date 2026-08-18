@@ -125,7 +125,11 @@ export function App() {
   async function draw(lesson: Lesson, warnings: string[] = []) {
     setStatus({ kind: 'busy', message: `Рисую урок «${lesson.meta.topic}»…` })
     try {
-      const result = await renderLesson(lesson, { answersOnBoard })
+      const result = await renderLesson(lesson, {
+        answersOnBoard,
+        onProgress: (progress) =>
+          setStatus({ kind: 'busy', message: `Рисую урок «${lesson.meta.topic}»… ${progress}` }),
+      })
       setLastLesson(lesson)
       setStatus({
         kind: 'done',
