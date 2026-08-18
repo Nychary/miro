@@ -355,6 +355,10 @@ function estimateBlockHeight(block: Block): number {
       return sectionOverhead + 200 + Math.ceil(block.branches.length / 2) * 260
     case 'reflection':
       return sectionOverhead + 700
+    case 'reading':
+      return sectionOverhead + block.paragraphs.length * 320 + Math.ceil((block.questions?.length ?? 0) / 2) * 220
+    case 'audio':
+      return sectionOverhead + 260 + Math.ceil((block.tasks?.length ?? 0) / 2) * 220
     case 'formulas':
       return sectionOverhead + Math.ceil(block.items.length / 2) * 320
     case 'example':

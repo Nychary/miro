@@ -55,6 +55,8 @@ export type Block =
   | TheoryBlock
   | MindmapBlock
   | ReflectionBlock
+  | ReadingBlock
+  | AudioBlock
   | FormulasBlock
   | ExampleBlock
   | TasksBlock
@@ -135,6 +137,38 @@ export interface ReflectionBlock extends BlockBase<'reflection'> {
 }
 
 export const REFLECTION_DEFAULT_PROMPTS = ['Было легко', 'Было сложно', 'Хочу узнать больше']
+
+/**
+ * Текст для чтения — то, что ученик читает прямо с доски: интервью, статья,
+ * диалог. Абзацы нумеруются, чтобы задания могли на них ссылаться
+ * («какой вопрос подходит к ответу 3?»).
+ */
+export interface ReadingBlock extends BlockBase<'reading'> {
+  /** Подводка перед текстом: откуда он и зачем читаем. */
+  intro?: string
+  paragraphs: ReadingParagraph[]
+  /** Вопросы на понимание — рендерятся стикерами после текста. */
+  questions?: string[]
+}
+
+export interface ReadingParagraph {
+  /** Метка абзаца: «1», «Erin», «Гэри». */
+  label?: string
+  text: string
+}
+
+/**
+ * Метка аудирования: номер трека из материалов курса и что с ним делать.
+ * Сам звук доска не проигрывает — репетитор включает файл у себя, а карточка
+ * служит меткой в сценарии урока. Файл можно перетащить на доску рядом.
+ */
+export interface AudioBlock extends BlockBase<'audio'> {
+  /** Номер трека, как он назван в курсе: «3.2». */
+  track: string
+  instruction: string
+  /** Вопросы или задания к прослушиванию. */
+  tasks?: string[]
+}
 
 /** Итог урока: что усвоили. */
 export interface SummaryBlock extends BlockBase<'summary'> {
@@ -316,6 +350,8 @@ export const DEFAULT_TITLES: Record<Block['type'], { ru: string; en: string }> =
   theory: { ru: 'Теория', en: 'Theory' },
   mindmap: { ru: 'Новый материал', en: 'Mind map' },
   reflection: { ru: 'Рефлексия', en: 'Reflection' },
+  reading: { ru: 'Чтение', en: 'Reading' },
+  audio: { ru: 'Аудирование', en: 'Listening' },
   formulas: { ru: 'Формулы', en: 'Formulas' },
   example: { ru: 'Разбор примера', en: 'Worked example' },
   tasks: { ru: 'Задачи', en: 'Practice tasks' },

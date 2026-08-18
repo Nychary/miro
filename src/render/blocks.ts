@@ -1,4 +1,5 @@
 import type {
+  AudioBlock,
   Block,
   ExampleBlock,
   FormulasBlock,
@@ -9,6 +10,7 @@ import type {
   MatchingBlock,
   MindmapBlock,
   ObjectivesBlock,
+  ReadingBlock,
   ReflectionBlock,
   SortingBlock,
   SpeakingBlock,
@@ -44,6 +46,10 @@ export async function renderBlock(canvas: Canvas, block: Block, lesson: Lesson):
       return renderMindmap(canvas, block, title)
     case 'reflection':
       return renderReflection(canvas, block, title)
+    case 'reading':
+      return renderReading(canvas, block, title)
+    case 'audio':
+      return renderAudio(canvas, block, title)
     case 'formulas':
       return renderFormulas(canvas, block, title)
     case 'example':
@@ -189,6 +195,76 @@ async function renderReflection(canvas: Canvas, block: ReflectionBlock, title: s
       column.top = note.y + note.height / 2 + gap.sm
     }
   })
+}
+
+/**
+ * Текст для чтения: абзацы карточками с метками, чтобы задания могли
+ * ссылаться на них («какой вопрос подходит к ответу 3?»), вопросы — стикерами.
+ */
+async function renderReading(canvas: Canvas, block: ReadingBlock, title: string): Promise<void> {
+  await section(canvas, title)
+
+  if (block.intro) {
+    await canvas.text(paragraphs(escapeHtml(block.intro)), { color: color.muted, gapAfter: gap.md })
+  }
+
+  for (const paragraph of block.paragraphs) {
+    await card(canvas, { fillColor: '#fbfbf6', borderColor: color.divider }, async (inner) => {
+      const head = paragraph.label ? `${bold(paragraph.label)} — ` : ''
+      await canvas.text(`${head}${escapeHtml(paragraph.text)}`, { ...inner, size: font.body })
+    })
+  }
+
+  if (block.questions?.length) {
+    canvas.advance(gap.md)
+    await canvas.text(bold('Вопросы к тексту'), { size: font.small, color: color.muted, gapAfter: gap.xs })
+    const width = cellWidth(canvas, 2)
+    await grid(canvas, block.questions.length, { columns: 2, cellWidth: width }, async (index, left, top) => {
+      const note = await canvas.sticky({
+        left,
+        top,
+        width,
+        shape: 'rectangle',
+        content: escapeHtml(block.questions?.[index] ?? ''),
+        fillColor: sticky.speaking,
+      })
+      return note.height
+    })
+  }
+}
+
+/**
+ * Метка аудирования. Доска звук не проигрывает — репетитор включает трек у
+ * себя, а карточка держит место в сценарии: номер трека, задание, вопросы.
+ * Рядом можно бросить сам файл — Miro принимает файлы перетаскиванием.
+ */
+async function renderAudio(canvas: Canvas, block: AudioBlock, title: string): Promise<void> {
+  await section(canvas, title)
+
+  await card(canvas, { fillColor: color.exampleFill, borderColor: color.exampleBorder }, async (inner) => {
+    await canvas.text(`🔊 ${bold(`Track ${block.track}`)}`, {
+      ...inner,
+      size: font.sectionTitle,
+      gapAfter: gap.xs,
+    })
+    await canvas.text(paragraphs(escapeHtml(block.instruction)), { ...inner, size: font.body })
+  })
+
+  if (block.tasks?.length) {
+    canvas.advance(gap.sm)
+    const width = cellWidth(canvas, 2)
+    await grid(canvas, block.tasks.length, { columns: 2, cellWidth: width }, async (index, left, top) => {
+      const note = await canvas.sticky({
+        left,
+        top,
+        width,
+        shape: 'rectangle',
+        content: escapeHtml(block.tasks?.[index] ?? ''),
+        fillColor: sticky.vocabulary,
+      })
+      return note.height
+    })
+  }
 }
 
 async function renderSummary(canvas: Canvas, block: SummaryBlock, title: string): Promise<void> {

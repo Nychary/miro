@@ -286,6 +286,47 @@ function validateBlock(input: unknown, path: string, problems: Problems): Block 
       return { type, title, center: requireString(input.center, `${path}.center`, problems), branches }
     }
 
+    case 'reading': {
+      const paragraphs = requireArray(input.paragraphs, `${path}.paragraphs`, problems).map(
+        (paragraph, index) => {
+          const at = `${path}.paragraphs[${index}]`
+          if (!isRecord(paragraph)) {
+            problems.error(at, 'ожидался объект')
+            return { text: '' }
+          }
+          const label = optionalString(paragraph.label)
+          return {
+            text: requireString(paragraph.text, `${at}.text`, problems),
+            ...(label ? { label } : {}),
+          }
+        },
+      )
+      const questions = Array.isArray(input.questions)
+        ? input.questions.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        : undefined
+      const intro = optionalString(input.intro)
+      return {
+        type,
+        title,
+        paragraphs,
+        ...(intro ? { intro } : {}),
+        ...(questions?.length ? { questions } : {}),
+      }
+    }
+
+    case 'audio': {
+      const tasks = Array.isArray(input.tasks)
+        ? input.tasks.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        : undefined
+      return {
+        type,
+        title,
+        track: requireString(input.track, `${path}.track`, problems),
+        instruction: requireString(input.instruction, `${path}.instruction`, problems),
+        ...(tasks?.length ? { tasks } : {}),
+      }
+    }
+
     case 'reflection': {
       const prompts = Array.isArray(input.prompts)
         ? input.prompts.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)

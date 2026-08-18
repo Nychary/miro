@@ -1,5 +1,6 @@
 import type {
   AnswersBlock,
+  AudioBlock,
   Block,
   ExampleBlock,
   FormulasBlock,
@@ -8,6 +9,7 @@ import type {
   Lesson,
   MatchingBlock,
   MindmapBlock,
+  ReadingBlock,
   ReflectionBlock,
   SortingBlock,
   TasksBlock,
@@ -96,6 +98,10 @@ function renderBlock(block: Block, lesson: Lesson): string {
       return section(title, mindmap(block))
     case 'reflection':
       return section(title, reflection(block))
+    case 'reading':
+      return section(title, reading(block))
+    case 'audio':
+      return section(title, audio(block))
     case 'formulas':
       return section(title, formulas(block))
     case 'example':
@@ -128,6 +134,23 @@ function reflection(block: ReflectionBlock): string {
   const prompts = block.prompts?.length ? block.prompts : REFLECTION_DEFAULT_PROMPTS
   return `<table class="exercise"><tr>${prompts.map((prompt) => `<th>${esc(prompt)}</th>`).join('')}</tr>
 <tr>${prompts.map(() => '<td class="blank tall"></td>').join('')}</tr></table>`
+}
+
+function reading(block: ReadingBlock): string {
+  const intro = block.intro ? `<p class="muted">${esc(block.intro)}</p>` : ''
+  const paragraphsHtml = block.paragraphs
+    .map(
+      (paragraph) =>
+        `<div class="card">${paragraph.label ? `<strong>${esc(paragraph.label)}</strong> — ` : ''}${esc(paragraph.text)}</div>`,
+    )
+    .join('')
+  const questions = block.questions?.length ? `<h4>Вопросы к тексту</h4>${list(block.questions)}` : ''
+  return `${intro}${paragraphsHtml}${questions}`
+}
+
+function audio(block: AudioBlock): string {
+  const tasks = block.tasks?.length ? list(block.tasks) : ''
+  return `<div class="card example"><h3>🔊 Track ${esc(block.track)}</h3><p>${esc(block.instruction)}</p></div>${tasks}`
 }
 
 function theory(block: TheoryBlock): string {

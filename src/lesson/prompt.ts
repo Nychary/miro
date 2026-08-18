@@ -217,6 +217,11 @@ const SCHEMA_SPEC = `Формат ответа — один JSON-объект т
 { "type": "mindmap", "center": string,
   "branches": [{ "label": string, "children": string[] }] }
 { "type": "reflection", "prompts": string[] }   // необязательно: подписи трёх колонок
+{ "type": "reading", "intro": string,           // intro необязательно
+  "paragraphs": [{ "label": string, "text": string }],  // label необязательно: "1", "Erin"
+  "questions": string[] }                       // необязательно: вопросы на понимание
+{ "type": "audio", "track": string,             // номер трека курса: "3.2"
+  "instruction": string, "tasks": string[] }    // tasks необязательно
 { "type": "formulas", "items": [{
     "plain": string,          // формула юникодом: "I = U / R", "Δp = F·Δt"
     "latex": string,          // необязательно, та же формула в LaTeX
