@@ -57,6 +57,13 @@ describe('шаблон из пяти упражнений', () => {
     expect(prompt).not.toContain('задач по возрастанию')
   })
 
+  it('сложность привязана к уровню, а не к средней школе', () => {
+    const prompt = buildPrompt(BASE)
+    expect(prompt).toContain('Сложность калибруй по полю «Уровень»')
+    expect(prompt).toContain('части 2 ЕГЭ')
+    expect(prompt).toContain('НЕ упрощай физику задачи')
+  })
+
   it('число задач по физике растёт с длительностью — с реальных занятий', () => {
     expect(buildPrompt({ ...BASE, template: 'five', durationMin: 60 })).toContain('10 задач')
     expect(buildPrompt({ ...BASE, template: 'five', durationMin: 45 })).toContain('6 задач')
