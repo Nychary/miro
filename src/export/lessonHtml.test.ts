@@ -31,8 +31,20 @@ describe('полнота экспорта', () => {
     expect(html).toContain('<table>')
     expect(html).toContain('We went to Prague last spring.')
     expect(html).toContain('bought')
-    // Пропуски остаются в тексте предложений — их заполняют на распечатке.
-    expect(html).toContain('Last summer we ___ to Italy by train.')
+    // Пропуски превращаются в зоны: на экране в них кладут карточки,
+    // на печати это пустые подчёркивания.
+    expect(html).toContain('Last summer we <span class="slot" data-answer="went"></span> to Italy by train.')
+  })
+
+  it('интерактивные задания получают карточки, зоны и самопроверку', () => {
+    const html = lessonToHtml(ENGLISH_SAMPLE)
+
+    expect(html).toContain('class="chip"')
+    expect(html).toContain('class="zone blank tall"')
+    expect(html).toContain('class="btn check"')
+    expect(html).toContain('<script>')
+    // Карточка сортировки знает свою правильную группу.
+    expect(html).toMatch(/class="chip" data-value="[^"]+" data-group="[^"]+"/)
   })
 
   it('интеллект-карта и рефлексия попадают в файл', () => {
@@ -89,6 +101,16 @@ describe('устойчивость', () => {
 
     const html = lessonToHtml(lesson)
     expect(html).not.toContain('class="answers"')
+  })
+
+  it('урок без интерактивных заданий не тащит скрипт', () => {
+    const lesson: Lesson = {
+      meta: { subject: 'english', topic: 'Тест', level: 'B1', durationMin: 45, language: 'ru' },
+      blocks: [{ type: 'objectives', items: ['Цель'] }],
+    }
+
+    const html = lessonToHtml(lesson)
+    expect(html).not.toContain('<script>')
   })
 
   it('выдаёт валидный самодостаточный документ', () => {

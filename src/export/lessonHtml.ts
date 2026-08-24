@@ -16,7 +16,7 @@ import type {
   TheoryBlock,
   VocabularyBlock,
 } from '../lesson/schema'
-import { REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/schema'
+import { GAP_MARKER, REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/schema'
 import { shuffle } from '../render/composition'
 
 /**
@@ -26,15 +26,21 @@ import { shuffle } from '../render/composition'
  * доступ к Miro из России держится на отзывном решении самой Miro, и один
  * e-mail от их compliance-отдела оставит репетитора без всех досок разом.
  * Схема урока координат не содержит, поэтому тот же JSON, который рисуется
- * на доске, здесь превращается в печатаемую страницу: файл открывается в
- * любом браузере, живёт на диске у репетитора и не зависит ни от Miro,
+ * на доске, здесь превращается в самостоятельную страницу: файл открывается
+ * в любом браузере, живёт на диске у репетитора и не зависит ни от Miro,
  * ни от GitHub, ни от нас.
  *
- * Интерактивные задания рендерятся как печатные упражнения: зоны — пустыми
- * рамками, карточки — банком слов в перемешанном порядке. Ответы уходят в
- * самый конец с разрывом страницы, чтобы их было легко отрезать перед тем,
- * как отдать распечатку ученику.
+ * Интерактивные задания живут в двух режимах сразу. На экране карточки
+ * по-настоящему перетаскиваются пальцем или мышкой, а кнопка «Проверить»
+ * подсвечивает, что легло на своё место, — так файл годится и для домашки
+ * без доски. На печати те же задания превращаются в рабочий лист: зоны —
+ * пустыми рамками, карточки — банком слов в перемешанном порядке. Ответы
+ * уходят в самый конец с разрывом страницы, чтобы их было легко отрезать
+ * перед тем, как отдать распечатку ученику.
  */
+
+/** Типы блоков, которым нужен перетаскиватель карточек. */
+const INTERACTIVE_TYPES = new Set<Block['type']>(['matching', 'sorting', 'gapfill'])
 
 export function lessonToHtml(lesson: Lesson): string {
   const { meta } = lesson
@@ -54,6 +60,8 @@ export function lessonToHtml(lesson: Lesson): string {
     .map((block) => renderBlock(block, lesson))
     .join('\n')
 
+  const hasInteractive = lesson.blocks.some((block) => INTERACTIVE_TYPES.has(block.type))
+
   return `<!doctype html>
 <html lang="ru">
 <head>
@@ -70,6 +78,7 @@ export function lessonToHtml(lesson: Lesson): string {
 </header>
 ${body}
 ${answers ? renderAnswers(answers, lesson) : ''}
+${hasInteractive ? `<script>${SCRIPT}</script>` : ''}
 </body>
 </html>`
 }
@@ -113,11 +122,11 @@ function renderBlock(block: Block, lesson: Lesson): string {
     case 'grammar':
       return section(title, grammar(block))
     case 'matching':
-      return section(title, matching(block))
+      return section(title, matching(block, lesson.meta.language))
     case 'sorting':
-      return section(title, sorting(block))
+      return section(title, sorting(block, lesson.meta.language))
     case 'gapfill':
-      return section(title, gapfill(block))
+      return section(title, gapfill(block, lesson.meta.language))
     case 'answers':
       return ''
   }
@@ -228,31 +237,57 @@ function grammar(block: GrammarBlock): string {
   return `<div class="card"><p>${esc(block.rule)}</p></div>${table}${list(block.examples)}${mistakes}`
 }
 
-function matching(block: MatchingBlock): string {
+function matching(block: MatchingBlock, language: 'ru' | 'en'): string {
   const bank = shuffle(block.pairs.map((pair) => pair.right))
-  return `<p class="muted">${esc(block.instruction)}</p>
+  return `<div class="interactive" data-lang="${language}">
+<p class="muted">${esc(block.instruction)}</p>
 <table class="exercise">${block.pairs
-    .map((pair) => `<tr><td>${esc(pair.left)}</td><td class="blank"></td></tr>`)
+    .map((pair) => `<tr><td>${esc(pair.left)}</td><td class="slot blank" data-answer="${esc(pair.right)}"></td></tr>`)
     .join('')}</table>
-${wordBank(bank)}`
+${wordBank(bank)}
+${controls(language)}
+</div>`
 }
 
-function sorting(block: SortingBlock): string {
-  const bank = shuffle(block.groups.flatMap((group) => group.items))
-  return `<p class="muted">${esc(block.instruction)}</p>
+function sorting(block: SortingBlock, language: 'ru' | 'en'): string {
+  const bank = shuffle(
+    block.groups.flatMap((group) => group.items.map((item) => ({ item, group: group.name }))),
+  )
+  return `<div class="interactive" data-lang="${language}">
+<p class="muted">${esc(block.instruction)}</p>
 <table class="exercise"><tr>${block.groups.map((group) => `<th>${esc(group.name)}</th>`).join('')}</tr>
-<tr>${block.groups.map(() => '<td class="blank tall"></td>').join('')}</tr></table>
-${wordBank(bank)}`
+<tr>${block.groups.map((group) => `<td class="zone blank tall" data-group="${esc(group.name)}"></td>`).join('')}</tr></table>
+<div class="bank">${bank.map((entry) => chip(entry.item, entry.group)).join('')}</div>
+${controls(language)}
+</div>`
 }
 
-function gapfill(block: GapFillBlock): string {
+function gapfill(block: GapFillBlock, language: 'ru' | 'en'): string {
   const bank = shuffle([
     ...block.sentences.flatMap((sentence) => sentence.answers),
     ...(block.distractors ?? []),
   ])
-  return `<p class="muted">${esc(block.instruction)}</p>
-<ol>${block.sentences.map((sentence) => `<li>${esc(sentence.text)}</li>`).join('')}</ol>
-${wordBank(bank)}`
+  const sentences = block.sentences
+    .map((sentence) => {
+      const parts = sentence.text.split(GAP_MARKER)
+      const withSlots = parts
+        .map(
+          (part, index) =>
+            esc(part) +
+            (index < parts.length - 1
+              ? `<span class="slot" data-answer="${esc(sentence.answers[index] ?? '')}"></span>`
+              : ''),
+        )
+        .join('')
+      return `<li>${withSlots}</li>`
+    })
+    .join('')
+  return `<div class="interactive" data-lang="${language}">
+<p class="muted">${esc(block.instruction)}</p>
+<ol>${sentences}</ol>
+${wordBank(bank)}
+${controls(language)}
+</div>`
 }
 
 function renderAnswers(block: AnswersBlock, lesson: Lesson): string {
@@ -297,7 +332,19 @@ function list(items: string[], className = ''): string {
 }
 
 function wordBank(values: string[]): string {
-  return `<div class="bank">${values.map((value) => `<span>${esc(value)}</span>`).join('')}</div>`
+  return `<div class="bank">${values.map((value) => chip(value)).join('')}</div>`
+}
+
+/** Перетаскиваемая карточка. Для сортировки несёт свою правильную группу. */
+function chip(value: string, group?: string): string {
+  return `<span class="chip" data-value="${esc(value)}"${group ? ` data-group="${esc(group)}"` : ''}>${esc(value)}</span>`
+}
+
+/** Кнопки самопроверки. На печати скрываются — рабочий лист остаётся чистым. */
+function controls(language: 'ru' | 'en'): string {
+  const check = language === 'en' ? 'Check' : 'Проверить'
+  const reset = language === 'en' ? 'Reset cards' : 'Вернуть карточки'
+  return `<div class="controls"><button type="button" class="btn check">${check}</button><button type="button" class="btn reset">${reset}</button><span class="verdict" aria-live="polite"></span></div>`
 }
 
 function esc(value: string): string {
@@ -344,11 +391,138 @@ th, td { padding: 8px 10px; border: 1px solid #e3e6ec; text-align: left; }
 th { background: #4262ff; color: #fff; }
 table.exercise td.blank { width: 45%; height: 34px; border-style: dashed; }
 table.exercise td.tall { height: 120px; }
-.bank { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
-.bank span { padding: 6px 12px; border: 1px solid #e0c840; border-radius: 8px; background: #fdf3ba; }
+.bank { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; min-height: 40px; }
+.chip { display: inline-block; padding: 6px 12px; border: 1px solid #e0c840; border-radius: 8px;
+  background: #fdf3ba; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
+.chip.drag { position: fixed; z-index: 99; pointer-events: none; box-shadow: 0 8px 20px rgba(0,0,0,.25);
+  transform: rotate(-2deg); }
+.chip.ok { background: #ddf2e4; border-color: #57ab7c; }
+.chip.bad { background: #fbdcdc; border-color: #d66a6a; }
+td.slot .chip, .zone .chip { margin: 2px; }
+td.slot.ok, .zone .chip.ok { outline: 2px solid #57ab7c; outline-offset: -2px; }
+td.slot.bad { outline: 2px solid #d66a6a; outline-offset: -2px; }
+span.slot { display: inline-block; min-width: 90px; min-height: 30px; vertical-align: middle;
+  border-bottom: 2px dashed #9aa3b0; padding: 0 4px; text-align: center; }
+span.slot.ok { border-bottom-color: #57ab7c; }
+span.slot.bad { border-bottom-color: #d66a6a; }
+span.slot .chip { margin: 1px 0; }
+.controls { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; }
+.btn { padding: 7px 16px; border: 1px solid #4262ff; border-radius: 8px; background: #4262ff;
+  color: #fff; font: inherit; cursor: pointer; }
+.btn.reset { background: transparent; color: #4262ff; }
+.verdict { font-weight: 600; }
 .hints { margin-top: 8px; }
 .answers { break-before: page; margin-top: 40px; padding-top: 8px; border-top: 3px dashed #d64545; }
 .answers h2 { border-top: none; color: #a11; }
 @media (max-width: 640px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
-@media print { body { padding: 0; font-size: 12px; } .card { border-radius: 4px; } }
+@media print { body { padding: 0; font-size: 12px; } .card { border-radius: 4px; } .controls { display: none; } }
+`
+
+/**
+ * Перетаскиватель карточек. Pointer-события работают и мышью, и пальцем,
+ * поэтому файл-урок годится для домашки на планшете. Без внешних зависимостей:
+ * страховка обязана открываться без интернета.
+ */
+const SCRIPT = `
+(function () {
+  'use strict';
+  var dragging = null;
+
+  document.querySelectorAll('.interactive').forEach(function (root) {
+    var bank = root.querySelector('.bank');
+    var lang = root.getAttribute('data-lang') || 'ru';
+    var verdict = root.querySelector('.verdict');
+
+    root.querySelectorAll('.chip').forEach(function (chip) { enableDrag(chip, root, bank); });
+
+    root.querySelector('.btn.check').addEventListener('click', function () {
+      verdict.textContent = runCheck(root, lang);
+    });
+    root.querySelector('.btn.reset').addEventListener('click', function () {
+      root.querySelectorAll('.chip').forEach(function (chip) {
+        chip.classList.remove('ok', 'bad');
+        bank.appendChild(chip);
+      });
+      root.querySelectorAll('.slot, .zone').forEach(function (el) { el.classList.remove('ok', 'bad'); });
+      verdict.textContent = '';
+    });
+  });
+
+  function enableDrag(chip, root, bank) {
+    chip.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      var rect = chip.getBoundingClientRect();
+      dragging = { chip: chip, root: root, bank: bank, dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+      // Захват не срабатывает для синтетических указателей — без него тоже работаем.
+      try { chip.setPointerCapture(e.pointerId); } catch (err) {}
+      chip.style.width = rect.width + 'px';
+      chip.classList.add('drag');
+      onMove(e);
+    });
+    chip.addEventListener('pointermove', onMove);
+    chip.addEventListener('pointerup', function (e) {
+      if (!dragging || dragging.chip !== chip) return;
+      chip.classList.remove('drag', 'ok', 'bad');
+      chip.style.left = chip.style.top = chip.style.width = '';
+      var under = document.elementFromPoint(e.clientX, e.clientY);
+      var slot = under && under.closest('.slot');
+      var zone = under && under.closest('.zone');
+      if (slot && dragging.root.contains(slot)) {
+        var occupant = slot.querySelector('.chip');
+        if (occupant && occupant !== chip) dragging.bank.appendChild(occupant);
+        slot.classList.remove('ok', 'bad');
+        slot.appendChild(chip);
+      } else if (zone && dragging.root.contains(zone)) {
+        zone.appendChild(chip);
+      } else {
+        dragging.bank.appendChild(chip);
+      }
+      dragging = null;
+    });
+  }
+
+  function onMove(e) {
+    if (!dragging || dragging.chip !== e.currentTarget) return;
+    var chip = dragging.chip;
+    chip.style.left = (e.clientX - dragging.dx) + 'px';
+    chip.style.top = (e.clientY - dragging.dy) + 'px';
+  }
+
+  function runCheck(root, lang) {
+    var total = 0;
+    var good = 0;
+
+    root.querySelectorAll('.slot').forEach(function (slot) {
+      total += 1;
+      var chip = slot.querySelector('.chip');
+      var ok = Boolean(chip) && chip.getAttribute('data-value') === slot.getAttribute('data-answer');
+      slot.classList.toggle('ok', ok);
+      slot.classList.toggle('bad', !ok);
+      if (chip) {
+        chip.classList.toggle('ok', ok);
+        chip.classList.toggle('bad', !ok);
+      }
+      if (ok) good += 1;
+    });
+
+    // Сортировка: считаем каждую карточку — и лежащие не в своей группе,
+    // и оставшиеся в банке идут в знаменатель, чтобы «верно 4 из 9» не врало.
+    root.querySelectorAll('.chip[data-group]').forEach(function (chip) {
+      total += 1;
+      var zone = chip.closest('.zone');
+      var ok = Boolean(zone) && chip.getAttribute('data-group') === zone.getAttribute('data-group');
+      if (zone) {
+        chip.classList.toggle('ok', ok);
+        chip.classList.toggle('bad', !ok);
+      }
+      if (ok) good += 1;
+    });
+
+    if (total === 0) return '';
+    if (good === total) return lang === 'en' ? 'All correct! 🎉' : 'Всё верно! 🎉';
+    return lang === 'en'
+      ? good + ' of ' + total + ' correct — try again'
+      : 'Верно ' + good + ' из ' + total + ' — попробуй ещё';
+  }
+})();
 `
