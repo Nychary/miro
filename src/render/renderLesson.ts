@@ -286,10 +286,18 @@ async function wrapInFrame(
   const box = canvas.bbox()
 
   // Порядок детей — это порядок слоёв: декорации в самом низу (это фон),
-  // над ними подложки карточек, потом коннекторы, сверху содержимое.
-  const backdropIds = new Set(canvas.backdrops.map((item) => item.id))
-  const content = canvas.items.filter((item) => !backdropIds.has(item.id))
-  const ordered = [...decorations, ...canvas.backdrops, ...canvas.connectors, ...content]
+  // над ними подложки карточек, затем средний слой приёмов (поднос, из-под
+  // которого вытягивают вопрос; пятно фонаря), потом коннекторы, сверху
+  // содержимое.
+  const lowerIds = new Set([...canvas.backdrops, ...canvas.midgrounds].map((item) => item.id))
+  const content = canvas.items.filter((item) => !lowerIds.has(item.id))
+  const ordered = [
+    ...decorations,
+    ...canvas.backdrops,
+    ...canvas.midgrounds,
+    ...canvas.connectors,
+    ...content,
+  ]
 
   const frame = await miro.board.createFrame({
     title,
@@ -309,9 +317,12 @@ async function wrapInFrame(
   // отправляет в самый низ доски, то есть под заливку фрейма, и подложка
   // становится невидимой. Поднятое содержимое оказывается над своей подложкой,
   // а обе остаются над фреймом.
-  if ((canvas.backdrops.length > 0 || decorations.length > 0) && content.length > 0) {
+  if ((lowerIds.size > 0 || decorations.length > 0) && content.length > 0) {
     if (canvas.backdrops.length > 0) {
       await miro.board.bringToFront(canvas.backdrops)
+    }
+    if (canvas.midgrounds.length > 0) {
+      await miro.board.bringToFront(canvas.midgrounds)
     }
     await miro.board.bringToFront(content)
   }
@@ -437,6 +448,14 @@ function estimateBlockHeight(block: Block): number {
       return sectionOverhead + 400 + block.groups.length * 60
     case 'gapfill':
       return sectionOverhead + block.sentences.length * 130 + 300
+    case 'mysterybox':
+      return sectionOverhead + 400 + Math.ceil((block.slots.length + (block.distractors?.length ?? 0)) / 4) * 120
+    case 'halves':
+      return sectionOverhead + block.pairs.length * 160 + 300
+    case 'pullout':
+      return sectionOverhead + 300 + Math.ceil(block.questions.length / 4) * 200
+    case 'flashlight':
+      return sectionOverhead + 300 + Math.ceil(block.words.length / 4) * 130
     case 'speaking':
       return sectionOverhead + Math.ceil(block.prompts.length / 2) * 220
     case 'summary':

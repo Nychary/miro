@@ -1,14 +1,19 @@
+import type { Shape } from '@mirohq/websdk-types'
 import type {
   AudioBlock,
   Block,
   ExampleBlock,
+  FlashlightBlock,
   FormulasBlock,
   GapFillBlock,
   GrammarBlock,
+  HalvesBlock,
   HomeworkBlock,
   Lesson,
   MatchingBlock,
   MindmapBlock,
+  MysteryBoxBlock,
+  PullOutBlock,
   ObjectivesBlock,
   ReadingBlock,
   ReflectionBlock,
@@ -66,6 +71,14 @@ export async function renderBlock(canvas: Canvas, block: Block, lesson: Lesson):
       return renderSorting(canvas, block, title)
     case 'gapfill':
       return renderGapFill(canvas, block, title)
+    case 'mysterybox':
+      return renderMysteryBox(canvas, block, title)
+    case 'halves':
+      return renderHalves(canvas, block, title)
+    case 'pullout':
+      return renderPullOut(canvas, block, title)
+    case 'flashlight':
+      return renderFlashlight(canvas, block, title)
     case 'speaking':
       return renderSpeaking(canvas, block, title)
     case 'summary':
@@ -698,4 +711,311 @@ async function renderGapFill(canvas: Canvas, block: GapFillBlock, title: string)
   )
 
   canvas.exercises.push({ ref: block.ref, title, zones: zoneRecords, chips })
+}
+
+// ---------------------------------------------------------------------------
+// Приёмы оформления
+//
+// Всё, что ниже, — те же зоны и карточки, но собранные так, как их собирают
+// руками: карточки лежат в коробке, а не в ряду под заданием; пара сходится
+// в целый предмет; вопрос выезжает из-под подноса; слово проступает в луче
+// фонаря. Механика проверки от этого не меняется — она по-прежнему сверяет
+// текст карточки с текстом зоны, — а урок перестаёт выглядеть как анкета.
+// ---------------------------------------------------------------------------
+
+/**
+ * Волшебная коробка.
+ *
+ * Карточки лежат внутри нарисованной коробки, под ней — слоты для сборки
+ * фразы. Крышка стоит рядом приоткрытой: задание начинается с того, что её
+ * отодвигают, и этот момент стоит дороже любого оформления слотов.
+ */
+async function renderMysteryBox(canvas: Canvas, block: MysteryBoxBlock, title: string): Promise<void> {
+  await section(canvas, title)
+  await canvas.text(paragraphs(escapeHtml(block.instruction)), { color: color.muted, gapAfter: gap.md })
+
+  const words = shuffle([...block.slots, ...(block.distractors ?? [])])
+  const perRow = Math.max(1, Math.floor((canvas.width * 0.62) / (size.chipWidth + gap.sm)))
+  const boxRows = Math.ceil(words.length / perRow)
+
+  const boxWidth = perRow * size.chipWidth + (perRow + 1) * gap.sm
+  const boxHeight = boxRows * (size.chipHeight + gap.sm) + gap.sm + 70
+  const boxTop = canvas.top
+  const boxLeft = canvas.left
+
+  // Коробка — подложка: карточки должны лежать поверх неё, иначе их не видно.
+  await canvas.backdrop(
+    { left: boxLeft, top: boxTop, width: boxWidth, height: boxHeight },
+    { fillColor: color.boxFill, borderColor: color.boxBorder },
+  )
+
+  // Крышка сдвинута вбок и повёрнута — «коробку только что открыли».
+  await canvas.shape({
+    left: boxLeft + boxWidth + gap.md,
+    top: boxTop + boxHeight * 0.18,
+    width: Math.min(canvas.width - boxWidth - gap.md, boxWidth * 0.5),
+    height: 90,
+    shape: 'round_rectangle',
+    content: bold(block.boxLabel ?? 'крышка'),
+    fillColor: color.boxLidFill,
+    borderColor: color.boxBorder,
+    fontSize: font.small,
+    flow: false,
+  })
+
+  const chips: ChipRecord[] = []
+  for (const [index, word] of words.entries()) {
+    const row = Math.floor(index / perRow)
+    const column = index % perRow
+    const note = await canvas.sticky({
+      left: boxLeft + gap.sm + column * (size.chipWidth + gap.sm),
+      top: boxTop + 60 + row * (size.chipHeight + gap.sm),
+      width: size.chipWidth,
+      shape: 'rectangle',
+      content: escapeHtml(word),
+      fillColor: sticky.draggable,
+    })
+    await tagItem(note, { role: 'chip', exercise: block.ref, value: word })
+    chips.push({ id: note.id, value: word, homeX: note.x, homeY: note.y })
+  }
+
+  canvas.top = boxTop + boxHeight + gap.md
+
+  // Слоты для сборки: по одному на слово, в правильном порядке.
+  const slotWidth = Math.min(
+    size.dropZoneWidth,
+    (canvas.width - gap.sm * (block.slots.length - 1)) / Math.max(1, block.slots.length),
+  )
+  const slotsTop = canvas.top
+  const zones: ZoneRecord[] = []
+
+  for (const [index, expected] of block.slots.entries()) {
+    const zone = await dropZone(canvas, {
+      left: canvas.left + index * (slotWidth + gap.sm),
+      top: slotsTop,
+      width: slotWidth,
+      height: size.dropZoneHeight,
+    })
+    await tagItem(zone, { role: 'zone', exercise: block.ref, expected })
+    zones.push({ id: zone.id, expected })
+  }
+
+  canvas.top = slotsTop + size.dropZoneHeight + gap.sm
+  canvas.exercises.push({ ref: block.ref, title, zones, chips })
+}
+
+/**
+ * Половинки.
+ *
+ * Слева — начало фразы с половинкой предмета на правом краю, справа — зона,
+ * где ждут вторую половинку. Когда карточка встаёт на место, предмет
+ * срастается, и ученик видит это раньше, чем скажет учитель.
+ */
+async function renderHalves(canvas: Canvas, block: HalvesBlock, title: string): Promise<void> {
+  await section(canvas, title)
+  await canvas.text(paragraphs(escapeHtml(block.instruction)), { color: color.muted, gapAfter: gap.md })
+
+  const labelWidth = canvas.width * 0.42
+  const zoneLeft = canvas.left + labelWidth + size.halfDiameter + gap.sm
+  const zoneWidth = canvas.width - labelWidth - size.halfDiameter - gap.sm
+  const zones: ZoneRecord[] = []
+
+  for (const pair of block.pairs) {
+    const top = canvas.top
+    const height = size.dropZoneHeight
+
+    await canvas.shape({
+      left: canvas.left,
+      top,
+      width: labelWidth,
+      height,
+      content: escapeHtml(pair.left),
+      fillColor: color.theoryFill,
+      borderColor: color.theoryBorder,
+      align: 'left',
+      fontSize: font.body,
+      flow: false,
+    })
+
+    // Кружок лежит на среднем слое ровно в стыке: карточки накрывают его
+    // краями, и целым он выглядит только когда пара сошлась.
+    await canvas.midground({
+      left: canvas.left + labelWidth - size.halfDiameter / 2,
+      top: top + (height - size.halfDiameter) / 2,
+      width: size.halfDiameter,
+      height: size.halfDiameter,
+      shape: 'circle',
+      fillColor: color.halfFill,
+      borderColor: color.halfBorder,
+      flow: false,
+    })
+
+    const zone = await dropZone(canvas, { left: zoneLeft, top, width: zoneWidth, height })
+    await tagItem(zone, { role: 'zone', exercise: block.ref, expected: pair.right })
+    zones.push({ id: zone.id, expected: pair.right })
+    canvas.top = top + height + gap.sm
+  }
+
+  const chips = await renderChipPool(
+    canvas,
+    block.ref,
+    shuffle(block.pairs.map((pair) => ({ label: pair.right, value: pair.right }))),
+    'Вторые половинки — перетащи к своей паре',
+  )
+
+  canvas.exercises.push({ ref: block.ref, title, zones, chips })
+}
+
+/**
+ * Предмет-тянучка.
+ *
+ * Вопросы лежат под подносом и не видны, предметы — поверх подноса. Предмет
+ * и его вопрос связаны в группу, поэтому вопрос выезжает следом за предметом.
+ * Ученик тянет наугад — и в этом весь смысл: вопрос достаётся, а не выбирается.
+ */
+async function renderPullOut(canvas: Canvas, block: PullOutBlock, title: string): Promise<void> {
+  await section(canvas, title)
+  await canvas.text(paragraphs(escapeHtml(block.instruction)), { color: color.muted, gapAfter: gap.md })
+
+  const count = block.questions.length
+  if (count === 0) return
+
+  const trayTop = canvas.top
+  const trayHeight = size.trayHeight
+  const perRow = Math.max(1, Math.min(count, Math.floor(canvas.width / (size.pullItem + gap.md))))
+  const step = canvas.width / perRow
+
+  // Вопросы кладём первыми и в подложку: всё, что окажется под подносом,
+  // ученик увидит только когда вытянет.
+  const hidden: Shape[] = []
+  for (const [index, question] of block.questions.entries()) {
+    const column = index % perRow
+    const row = Math.floor(index / perRow)
+    const centerX = canvas.left + step * column + step / 2
+    const top = trayTop + gap.sm + row * (size.pullItem + gap.sm)
+
+    const card = await canvas.backdrop(
+      {
+        left: centerX - size.pullQuestionWidth / 2,
+        top: top + size.pullItem / 2 - 40,
+        width: size.pullQuestionWidth,
+        height: 150,
+      },
+      { fillColor: color.theoryFill, borderColor: color.theoryBorder },
+    )
+    card.content = escapeHtml(question)
+    card.style.fontSize = font.small
+    card.style.textAlign = 'center'
+    await card.sync()
+
+    hidden.push(card)
+  }
+
+  // Поднос — средний слой: он выше спрятанных вопросов, но ниже предметов.
+  const trayRows = Math.ceil(count / perRow)
+  await canvas.midground({
+    left: canvas.left,
+    top: trayTop,
+    width: canvas.width,
+    height: trayHeight + (trayRows - 1) * (size.pullItem + gap.sm),
+    shape: 'round_rectangle',
+    content: block.trayLabel ? bold(block.trayLabel) : '',
+    fillColor: color.trayFill,
+    borderColor: color.trayBorder,
+    fontSize: font.small,
+    alignVertical: 'bottom',
+    flow: false,
+  })
+
+  for (const [index, question] of hidden.entries()) {
+    const column = index % perRow
+    const row = Math.floor(index / perRow)
+    const centerX = canvas.left + step * column + step / 2
+    const top = trayTop + gap.sm + row * (size.pullItem + gap.sm)
+
+    const item = await canvas.shape({
+      left: centerX - size.pullItem / 2,
+      top,
+      width: size.pullItem,
+      height: size.pullItem,
+      shape: 'circle',
+      content: `<span style="font-size:48px">${escapeHtml(block.itemEmoji ?? '🍬')}</span>`,
+      fillColor: color.exampleFill,
+      borderColor: color.exampleBorder,
+      flow: false,
+    })
+
+    // Группа связывает предмет с его вопросом: тянут за предмет, едут оба.
+    // Слои при этом остаются прежними — вопрос по-прежнему под подносом,
+    // пока группу не сдвинут.
+    try {
+      await miro.board.group({ items: [item, question] })
+    } catch {
+      // Группировка — удобство, а не условие работы приёма: без неё вопрос
+      // просто вытягивают отдельным движением.
+    }
+  }
+
+  canvas.top = trayTop + trayHeight + (trayRows - 1) * (size.pullItem + gap.sm) + gap.md
+}
+
+/**
+ * Фонарик.
+ *
+ * Слова написаны цветом темноты и потому невидимы, светлое пятно фонаря
+ * лежит между темнотой и словами. Ученик водит пятном — и слова проступают
+ * там, где оно оказалось.
+ */
+async function renderFlashlight(canvas: Canvas, block: FlashlightBlock, title: string): Promise<void> {
+  await section(canvas, title)
+  await canvas.text(paragraphs(escapeHtml(block.instruction)), { color: color.muted, gapAfter: gap.xs })
+  if (block.hunt) {
+    await canvas.text(bold(block.hunt), { size: font.small, color: color.muted, gapAfter: gap.md })
+  }
+
+  const words = block.words
+  if (words.length === 0) return
+
+  const perRow = Math.max(1, Math.min(words.length, Math.floor(canvas.width / (size.chipWidth + gap.md))))
+  const rowCount = Math.ceil(words.length / perRow)
+  const rowHeight = 130
+  const darkTop = canvas.top
+  const darkHeight = rowCount * rowHeight + gap.md * 2
+
+  await canvas.backdrop(
+    { left: canvas.left, top: darkTop, width: canvas.width, height: darkHeight },
+    { fillColor: color.darkFill, borderColor: color.darkFill },
+  )
+
+  // Пятно света — средний слой. Стоит в углу: ученик сам двигает его по темноте.
+  await canvas.midground({
+    left: canvas.left + gap.md,
+    top: darkTop + gap.md,
+    width: size.lightSpot,
+    height: size.lightSpot,
+    shape: 'circle',
+    fillColor: color.lightSpot,
+    borderColor: color.lightSpot,
+    flow: false,
+  })
+
+  // Слова — цветом темноты, поверх всего. Порядок внутри строк перемешан,
+  // чтобы искать приходилось глазами, а не по памяти о списке.
+  const scattered = shuffle(words)
+  const step = canvas.width / perRow
+  for (const [index, word] of scattered.entries()) {
+    const column = index % perRow
+    const row = Math.floor(index / perRow)
+    await canvas.text(escapeHtml(word), {
+      left: canvas.left + step * column + gap.sm,
+      top: darkTop + gap.md + row * rowHeight + (row % 2 === 0 ? 0 : 30),
+      width: step - gap.sm * 2,
+      size: font.body,
+      color: color.darkFill,
+      align: 'center',
+      flow: false,
+    })
+  }
+
+  canvas.top = darkTop + darkHeight + gap.md
 }

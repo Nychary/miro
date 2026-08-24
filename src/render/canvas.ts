@@ -100,6 +100,16 @@ export class Canvas {
   readonly backdrops: Shape[] = []
 
   /**
+   * Средний слой: между подложками и содержимым.
+   *
+   * Нужен приёмам, где вещь прячется под другой вещью. У фонарика три слоя:
+   * тёмная картинка внизу, светлое пятно фонаря над ней и слова поверх всего —
+   * слова написаны цветом фона и проявляются только там, где под ними прошёл
+   * фонарь. Двух слоёв для этого мало.
+   */
+  readonly midgrounds: Shape[] = []
+
+  /**
    * Интерактивные задания, попавшие на холст: какие зоны и какие карточки
    * в них участвуют. Отсюда собирается указатель, который ложится в
    * метаданные фрейма урока и позволяет проверке не опрашивать всё подряд.
@@ -184,6 +194,7 @@ export class Canvas {
 
     this.items.push(...child.items)
     this.backdrops.push(...child.backdrops)
+    this.midgrounds.push(...child.midgrounds)
     this.exercises.push(...child.exercises)
     this.connectors.push(...child.connectors)
     this.minX = Math.min(this.minX, box.left)
@@ -333,6 +344,13 @@ export class Canvas {
       flow: false,
     })
     this.backdrops.push(item)
+    return item
+  }
+
+  /** Фигура на среднем слое: над подложками, но под содержимым. */
+  async midground(options: ShapeOptions): Promise<Shape> {
+    const item = await this.shape({ ...options, flow: options.flow ?? false })
+    this.midgrounds.push(item)
     return item
   }
 

@@ -3,12 +3,16 @@ import type {
   AudioBlock,
   Block,
   ExampleBlock,
+  FlashlightBlock,
   FormulasBlock,
   GapFillBlock,
   GrammarBlock,
+  HalvesBlock,
   Lesson,
   MatchingBlock,
   MindmapBlock,
+  MysteryBoxBlock,
+  PullOutBlock,
   ReadingBlock,
   ReflectionBlock,
   SortingBlock,
@@ -41,7 +45,14 @@ import type { LessonImage } from './boardImages'
  */
 
 /** Типы блоков, которым нужен перетаскиватель карточек. */
-const INTERACTIVE_TYPES = new Set<Block['type']>(['matching', 'sorting', 'gapfill'])
+const INTERACTIVE_TYPES = new Set<Block['type']>([
+  'matching',
+  'sorting',
+  'gapfill',
+  'mysterybox',
+  'halves',
+  'flashlight',
+])
 
 export interface ExportOptions {
   /**
@@ -142,6 +153,14 @@ function renderBlock(block: Block, lesson: Lesson): string {
       return section(title, sorting(block, lesson.meta.language))
     case 'gapfill':
       return section(title, gapfill(block, lesson.meta.language))
+    case 'mysterybox':
+      return section(title, mysteryBox(block, lesson.meta.language))
+    case 'halves':
+      return section(title, halves(block, lesson.meta.language))
+    case 'pullout':
+      return section(title, pullOut(block))
+    case 'flashlight':
+      return section(title, flashlight(block))
     case 'answers':
       return ''
   }
@@ -305,6 +324,65 @@ ${controls(language)}
 </div>`
 }
 
+/**
+ * Приёмы в файле остаются собой настолько, насколько это возможно на бумаге
+ * и в одном HTML: коробка рисуется коробкой, половинки — сходящейся парой,
+ * фонарик — тёмным полем, по которому водят светлым пятном. Перетаскивание
+ * и проверка у первых двух работают тем же кодом, что и у обычных заданий.
+ */
+function mysteryBox(block: MysteryBoxBlock, language: 'ru' | 'en'): string {
+  const words = shuffle([...block.slots, ...(block.distractors ?? [])])
+  return `<div class="interactive" data-lang="${language}">
+<p class="muted">${esc(block.instruction)}</p>
+<div class="box"><div class="lid">${esc(block.boxLabel ?? 'коробка')}</div>
+${words.map((word) => chip(word)).join('')}</div>
+<div class="slots">${block.slots
+    .map((expected) => `<span class="slot" data-answer="${esc(expected)}"></span>`)
+    .join('')}</div>
+${controls(language)}
+</div>`
+}
+
+function halves(block: HalvesBlock, language: 'ru' | 'en'): string {
+  const bank = shuffle(block.pairs.map((pair) => pair.right))
+  return `<div class="interactive" data-lang="${language}">
+<p class="muted">${esc(block.instruction)}</p>
+<table class="exercise halves">${block.pairs
+    .map(
+      (pair) =>
+        `<tr><td>${esc(pair.left)}<span class="half"></span></td><td class="slot blank" data-answer="${esc(
+          pair.right,
+        )}"></td></tr>`,
+    )
+    .join('')}</table>
+${wordBank(bank)}
+${controls(language)}
+</div>`
+}
+
+function pullOut(block: PullOutBlock): string {
+  const emoji = block.itemEmoji ?? '🍬'
+  return `<p class="muted">${esc(block.instruction)}</p>
+<div class="tray">${block.trayLabel ? `<span class="tray-label">${esc(block.trayLabel)}</span>` : ''}
+${block.questions
+    .map(
+      (question) =>
+        `<details class="pull"><summary><span class="pull-item">${esc(emoji)}</span></summary>${esc(
+          question,
+        )}</details>`,
+    )
+    .join('')}</div>`
+}
+
+function flashlight(block: FlashlightBlock): string {
+  return `<p class="muted">${esc(block.instruction)}</p>
+${block.hunt ? `<p><strong>${esc(block.hunt)}</strong></p>` : ''}
+<div class="dark">${shuffle(block.words)
+    .map((word) => `<span class="hidden-word">${esc(word)}</span>`)
+    .join('')}<span class="lamp"></span></div>
+<p class="small muted">Наведи фонарик на слова — они проявятся. На печати слова видны сразу.</p>`
+}
+
 function renderAnswers(block: AnswersBlock, lesson: Lesson): string {
   const imageIdeas = lesson.meta.imageIdeas?.length
     ? `<p class="muted">Картинки к оформлению: ${lesson.meta.imageIdeas.map(esc).join(' · ')}</p>`
@@ -448,13 +526,46 @@ span.slot .chip { margin: 1px 0; }
   color: #fff; font: inherit; cursor: pointer; }
 .btn.reset { background: transparent; color: #4262ff; }
 .verdict { font-weight: 600; }
+.box { position: relative; display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 10px;
+  padding: 26px 16px 16px; border: 3px solid #9c6a34; border-radius: 4px 4px 14px 14px; background: #c98b4b; }
+.lid { position: absolute; top: -20px; left: 12px; padding: 5px 18px; border: 3px solid #9c6a34;
+  border-radius: 8px; background: #e0a566; font-size: 13px; font-weight: 600; transform: rotate(-3deg); }
+.slots { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.slots .slot { min-width: 110px; }
+table.halves td:first-child { position: relative; }
+.half { position: absolute; right: -13px; top: 50%; width: 26px; height: 26px; margin-top: -13px;
+  border: 2px solid #d97ba1; border-radius: 50%; background: #f2b3c8; }
+.tray { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin: 10px 0;
+  padding: 16px; border: 2px solid #a9b8d8; border-radius: 14px; background: #dfe6f5; }
+.tray-label { width: 100%; font-size: 13px; font-weight: 600; color: #4b5a7a; }
+details.pull { background: #fff8e6; border: 1px solid #f5d98b; border-radius: 10px; padding: 8px 12px; }
+details.pull summary { cursor: pointer; list-style: none; font-size: 26px; line-height: 1; }
+details.pull summary::-webkit-details-marker { display: none; }
+details.pull[open] { background: #fff; }
+.dark { position: relative; display: flex; flex-wrap: wrap; gap: 18px 26px; overflow: hidden;
+  margin: 10px 0; padding: 26px; border-radius: 12px; background: #232a3a; }
+.hidden-word { position: relative; z-index: 2; color: #232a3a; font-weight: 600; }
+.dark:hover .hidden-word { color: #2b3348; }
+.lamp { position: absolute; z-index: 1; width: 150px; height: 150px; margin: -75px 0 0 -75px;
+  border-radius: 50%; background: radial-gradient(circle, #ffe9a8 0%, #ffe9a8 55%, transparent 72%);
+  pointer-events: none; transition: opacity .2s; opacity: 0; }
+.dark:hover .lamp { opacity: 1; }
 .pictures { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin: 10px 0; }
 .pictures img { max-width: 100%; height: auto; border-radius: 8px; break-inside: avoid; }
 .hints { margin-top: 8px; }
 .answers { break-before: page; margin-top: 40px; padding-top: 8px; border-top: 3px dashed #d64545; }
 .answers h2 { border-top: none; color: #a11; }
 @media (max-width: 640px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
-@media print { body { padding: 0; font-size: 12px; } .card { border-radius: 4px; } .controls { display: none; } }
+@media print {
+  body { padding: 0; font-size: 12px; }
+  .card { border-radius: 4px; }
+  .controls, .lamp { display: none; }
+  /* На бумаге прятать нечего: слова становятся видимыми, вопросы — раскрытыми. */
+  .dark { background: #f2f3f6; border: 1px solid #c8cede; }
+  .hidden-word { color: #12151a; }
+  details.pull { display: block; }
+  details.pull summary { display: none; }
+}
 `
 
 /**
@@ -526,6 +637,22 @@ const SCRIPT = `
     chip.style.left = (e.clientX - dragging.dx) + 'px';
     chip.style.top = (e.clientY - dragging.dy) + 'px';
   }
+
+  // Фонарик: пятно света едет за курсором и пальцем, слова проступают в нём.
+  document.querySelectorAll('.dark').forEach(function (field) {
+    var lamp = field.querySelector('.lamp');
+    if (!lamp) return;
+    function move(e) {
+      var box = field.getBoundingClientRect();
+      var point = e.touches ? e.touches[0] : e;
+      lamp.style.left = (point.clientX - box.left) + 'px';
+      lamp.style.top = (point.clientY - box.top) + 'px';
+      lamp.style.opacity = '1';
+    }
+    field.addEventListener('mousemove', move);
+    field.addEventListener('touchmove', move);
+    field.addEventListener('mouseleave', function () { lamp.style.opacity = '0'; });
+  });
 
   function runCheck(root, lang) {
     var total = 0;

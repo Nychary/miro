@@ -514,6 +514,64 @@ function validateBlock(input: unknown, path: string, problems: Problems): Block 
       }
     }
 
+    case 'mysterybox': {
+      const distractors = Array.isArray(input.distractors)
+        ? input.distractors.filter((value): value is string => typeof value === 'string')
+        : undefined
+
+      return {
+        type,
+        title,
+        ref: optionalString(input.ref) ?? 'b1',
+        instruction: requireString(input.instruction, `${path}.instruction`, problems),
+        slots: requireStringArray(input.slots, `${path}.slots`, problems),
+        ...(optionalString(input.boxLabel) ? { boxLabel: optionalString(input.boxLabel) as string } : {}),
+        ...(distractors?.length ? { distractors } : {}),
+      }
+    }
+
+    case 'halves': {
+      const pairs = requireArray(input.pairs, `${path}.pairs`, problems).map((pair, index) => {
+        const at = `${path}.pairs[${index}]`
+        if (!isRecord(pair)) {
+          problems.error(at, 'ожидался объект')
+          return { left: '', right: '' }
+        }
+        return {
+          left: requireString(pair.left, `${at}.left`, problems),
+          right: requireString(pair.right, `${at}.right`, problems),
+        }
+      })
+      return {
+        type,
+        title,
+        ref: optionalString(input.ref) ?? 'h1',
+        instruction: requireString(input.instruction, `${path}.instruction`, problems),
+        pairs,
+      }
+    }
+
+    case 'pullout': {
+      return {
+        type,
+        title,
+        instruction: requireString(input.instruction, `${path}.instruction`, problems),
+        questions: requireStringArray(input.questions, `${path}.questions`, problems),
+        ...(optionalString(input.trayLabel) ? { trayLabel: optionalString(input.trayLabel) as string } : {}),
+        ...(optionalString(input.itemEmoji) ? { itemEmoji: optionalString(input.itemEmoji) as string } : {}),
+      }
+    }
+
+    case 'flashlight': {
+      return {
+        type,
+        title,
+        instruction: requireString(input.instruction, `${path}.instruction`, problems),
+        words: requireStringArray(input.words, `${path}.words`, problems),
+        ...(optionalString(input.hunt) ? { hunt: optionalString(input.hunt) as string } : {}),
+      }
+    }
+
     case 'answers': {
       const items = requireArray(input.items, `${path}.items`, problems).map((item, index) => {
         const at = `${path}.items[${index}]`

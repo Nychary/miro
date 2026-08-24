@@ -36,6 +36,50 @@ describe('полнота экспорта', () => {
     expect(html).toContain('Last summer we <span class="slot" data-answer="went"></span> to Italy by train.')
   })
 
+  it('приёмы оформления доезжают до файла со своей механикой', () => {
+    const lesson: Lesson = {
+      meta: { subject: 'english', topic: 'Приёмы', level: 'A2', durationMin: 60, language: 'ru' },
+      blocks: [
+        {
+          type: 'mysterybox',
+          ref: 'b1',
+          instruction: 'Собери фразу',
+          boxLabel: 'подарок',
+          slots: ['She', 'bakes', 'bread'],
+          distractors: ['bake'],
+        },
+        {
+          type: 'halves',
+          ref: 'h1',
+          instruction: 'Собери половинки',
+          pairs: [{ left: 'The shop', right: 'closes at eight' }],
+        },
+        { type: 'pullout', instruction: 'Тяни конфету', itemEmoji: '🍬', questions: ['What do you eat?'] },
+        { type: 'flashlight', instruction: 'Води фонариком', words: ['always', 'never'], hunt: 'найди наречия' },
+      ],
+    }
+
+    const html = lessonToHtml(lesson)
+
+    // Коробка: карточки лежат внутри неё, слоты — отдельной строкой под ней.
+    expect(html).toContain('class="box"')
+    expect(html).toContain('class="lid"')
+    expect(html.indexOf('class="box"')).toBeLessThan(html.indexOf('class="slots"'))
+    // Лишнее слово в коробке есть, а слота под него нет.
+    expect(html).toContain('data-value="bake"')
+    expect((html.match(/data-answer="/g) ?? []).length).toBe(4)
+
+    // Половинки: кружок в стыке пары.
+    expect(html).toContain('class="half"')
+    // Тянучка: вопрос спрятан за предметом.
+    expect(html).toContain('class="pull-item"')
+    expect(html).toContain('What do you eat?')
+    // Фонарик: слова и пятно света.
+    expect(html).toContain('class="hidden-word"')
+    expect(html).toContain('class="lamp"')
+    expect(html).toContain('найди наречия')
+  })
+
   it('картинки с доски встают в свои секции', () => {
     const pixel = 'data:image/png;base64,iVBORw0KGgo='
     const html = lessonToHtml(PHYSICS_SAMPLE, {

@@ -124,9 +124,11 @@ function fiveStructure(request: LessonRequest): string {
     '2. mindmap — новый материал интеллект-картой: центральное понятие и 3–5 веток по 2–4 коротких тезиса' +
       (physics ? '; формулы включай в тезисы веток юникодом' : ''),
     `3. ${physics ? `tasks c "title": "Практика" — ${taskCount} задач по возрастанию сложности, с подсказками к трудным` : 'gapfill c "title": "Практика" — 4–5 предложений с пропусками плюс 2–3 лишних варианта'}`,
-    '4. matching или sorting c "title": "Игра" — одно интерактивное задание на перетаскивание',
-    '5. reflection — рефлексия; можно задать свои подписи колонок в "prompts" в стиле урока',
-    '6. answers — ответы ко всем заданиям практики и игры' + (physics ? ', с ходом решения' : ''),
+    '4. одна «Игра» c "title": "Игра" — выбери приём под тему: mysterybox, halves, sorting или matching',
+    '5. pullout ИЛИ flashlight — второй приём, для разговора или для лексики' +
+      (physics ? ' (у физики: pullout с вопросами «почему», flashlight с терминами темы)' : ''),
+    '6. reflection — рефлексия; можно задать свои подписи колонок в "prompts" в стиле урока',
+    '7. answers — ответы ко всем заданиям практики и игры' + (physics ? ', с ходом решения' : ''),
   ].join('\n')
 }
 
@@ -149,10 +151,11 @@ function structure(request: LessonRequest): string {
       '4. formulas — все формулы темы с расшифровкой обозначений и единиц',
       '5. example — одна задача, разобранная по шагам',
       `6. tasks — ${tasks} задач по возрастанию сложности, с подсказками к трудным`,
-      '7. matching или sorting — одно интерактивное задание',
-      '8. summary — 3 главные мысли',
-      '9. homework — 3 задания',
-      '10. answers — ответы ко всем задачам из tasks, с ходом решения',
+      '7. одно задание на перетаскивание: mysterybox, halves, sorting или matching — что лучше ложится на тему',
+      '8. pullout — 4–5 вопросов «почему» по теме, которые ученик вытягивает наугад',
+      '9. summary — 3 главные мысли',
+      '10. homework — 3 задания',
+      '11. answers — ответы ко всем задачам из tasks, с ходом решения',
     ].join('\n')
   }
 
@@ -163,12 +166,14 @@ function structure(request: LessonRequest): string {
     '2. warmup — 3 вопроса на английском, чтобы разговорить ученика',
     '3. grammar — правило, таблица форм и типичные ошибки',
     `4. vocabulary — ${vocab} слов с переводом и примером в предложении`,
-    '5. matching — сопоставление пар по теме урока',
-    '6. gapfill — 4–5 предложений с пропусками плюс 2–3 лишних варианта',
-    '7. speaking — 4 вопроса для говорения',
-    '8. summary — 3 главные мысли',
-    '9. homework — 3 задания',
-    '10. answers — ключ к matching, gapfill и остальным заданиям',
+    '5. halves — сопоставление пар по теме урока (начало и конец фразы, слово и определение)',
+    '6. flashlight — 6–8 слов урока, спрятанных в темноте, с заданием в "hunt"',
+    '7. gapfill — 4–5 предложений с пропусками плюс 2–3 лишних варианта',
+    '8. mysterybox — фраза из 5–7 слов, которую ученик собирает из карточек в коробке',
+    '9. pullout — 4–5 вопросов для говорения, которые ученик вытягивает наугад',
+    '10. summary — 3 главные мысли',
+    '11. homework — 3 задания',
+    '12. answers — ключ к halves, gapfill, mysterybox и остальным заданиям',
   ].join('\n')
 }
 
@@ -250,6 +255,19 @@ const SCHEMA_SPEC = `Формат ответа — один JSON-объект т
 { "type": "gapfill", "ref": string, "instruction": string,
   "sentences": [{ "text": string, "answers": string[] }],  // пропуск в text — ровно три подчёркивания: ___
   "distractors": string[] }                                // необязательно
+{ "type": "mysterybox", "ref": string, "instruction": string,
+  "slots": string[],          // слова в правильном порядке: из них ученик собирает фразу
+  "boxLabel": string,         // необязательно: что за коробка — «подарок», «шкатулка»
+  "distractors": string[] }   // необязательно: лишние слова
+{ "type": "halves", "ref": string, "instruction": string,
+  "pairs": [{ "left": string, "right": string }] }
+{ "type": "pullout", "instruction": string,
+  "questions": string[],      // вопросы, которые ученик вытягивает наугад
+  "trayLabel": string,        // необязательно: «тарелка с конфетами»
+  "itemEmoji": string }       // необязательно: один эмодзи предмета — 🍬, 🔑, ⚽
+{ "type": "flashlight", "instruction": string,
+  "words": string[],          // слова, спрятанные в темноте
+  "hunt": string }            // необязательно: что искать — «найди все глаголы»
 { "type": "speaking", "prompts": string[] }
 { "type": "summary", "points": string[] }
 { "type": "homework", "items": string[] }
