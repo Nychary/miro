@@ -8,6 +8,8 @@ import { buildPrompt, type LessonRequest } from '../lesson/prompt'
 import { SAMPLES } from '../lesson/samples'
 import { titleFor, type Lesson, type Subject } from '../lesson/schema'
 import { parseLessonResponse } from '../lesson/validate'
+import { collectFrameImages } from '../export/boardImages'
+import { listLessonSnapshots, type LessonSnapshot } from '../render/metadata'
 import { renderLesson } from '../render/renderLesson'
 import { STYLE_SUGGESTIONS } from '../render/theme'
 
@@ -51,6 +53,13 @@ export function App() {
   const [answersOnBoard, setAnswersOnBoard] = useState(false)
   const [lastLesson, setLastLesson] = useState<Lesson | null>(null)
 
+  // Уроки, которые помнит сама доска. Панель — обычная страница внутри Miro:
+  // любое обновление вкладки стирает её состояние, и без этого списка скачать
+  // урок файлом можно было только сразу после отрисовки.
+  const [saved, setSaved] = useState<LessonSnapshot[]>([])
+  const [chosenFrame, setChosenFrame] = useState('')
+  const [withPictures, setWithPictures] = useState(true)
+
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const promptSectionRef = useRef<HTMLElement>(null)
   const statusRef = useRef<HTMLDivElement>(null)
@@ -69,6 +78,21 @@ export function App() {
   // Живая проверка держит подписку на события доски и таймер опроса. Если
   // панель закроют, их некому будет снять — Miro просто уничтожит фрейм.
   useEffect(() => () => liveRef.current?.stop(), [])
+
+  useEffect(() => {
+    void refreshSaved()
+  }, [])
+
+  async function refreshSaved(): Promise<void> {
+    try {
+      const snapshots = await listLessonSnapshots()
+      setSaved(snapshots)
+      setChosenFrame((current) => current || snapshots[0]?.frameId || '')
+    } catch {
+      // Доска не отдала список — не повод показывать ошибку: панель нужна
+      // прежде всего для отрисовки, а скачивание здесь просто не появится.
+    }
+  }
 
   // Панель в Miro — узкая колонка с прокруткой, и всё новое появляется ниже
   // текущего экрана. Без этого нажатие на кнопку выглядит как «ничего не
@@ -131,6 +155,8 @@ export function App() {
           setStatus({ kind: 'busy', message: `Рисую урок «${lesson.meta.topic}»… ${progress}` }),
       })
       setLastLesson(lesson)
+      if (result.frame) setChosenFrame(result.frame.id)
+      void refreshSaved()
       setStatus({
         kind: 'done',
         message: `Готово: ${result.itemCount} объектов${
@@ -226,18 +252,47 @@ export function App() {
     void draw(parsed.lesson, parsed.warnings)
   }
 
-  function downloadHtml() {
-    if (!lastLesson) return
+  async function downloadHtml() {
+    const snapshot = saved.find((entry) => entry.frameId === chosenFrame)
+    const lesson = snapshot?.lesson ?? lastLesson
+    if (!lesson) return
 
-    const blob = new Blob([lessonToHtml(lastLesson)], { type: 'text/html;charset=utf-8' })
+    // Картинки живут только на доске, поэтому забираем их прямо перед
+    // сохранением: репетитор украшает урок уже после отрисовки, и в файл
+    // должно попасть то, что на доске сейчас, а не то, что было при генерации.
+    let images: Awaited<ReturnType<typeof collectFrameImages>> = { images: [], skipped: 0 }
+    if (withPictures && snapshot) {
+      setStatus({ kind: 'busy', message: 'Собираю картинки с доски…' })
+      try {
+        images = await collectFrameImages(snapshot.frameId, snapshot.anchors, (message) =>
+          setStatus({ kind: 'busy', message }),
+        )
+      } catch {
+        images = { images: [], skipped: 0 }
+      }
+    }
+
+    const html = lessonToHtml(lesson, { images: images.images })
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `урок-${lastLesson.meta.topic.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}.html`
+    link.download = `урок-${lesson.meta.topic.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}.html`
     document.body.append(link)
     link.click()
     link.remove()
     window.setTimeout(() => URL.revokeObjectURL(url), 5000)
+
+    const size = Math.round(html.length / 1024)
+    setStatus({
+      kind: 'done',
+      message: `Файл сохранён: ${images.images.length} картинок с доски, ${size} КБ.`,
+      warnings: images.skipped
+        ? [
+            `Картинок не удалось забрать: ${images.skipped}. Обычно это значит, что Miro не отдаёт их из панели — скажите мне, и мы найдём другой путь.`,
+          ]
+        : [],
+    })
   }
 
   const canBuild = topic.trim().length > 0 && level.trim().length > 0
@@ -507,10 +562,39 @@ export function App() {
         </div>
       )}
 
-      {lastLesson && !busy && (
+      {(saved.length > 0 || lastLesson) && !busy && (
         <section className="step">
           <div className="step-label">Страховка</div>
-          <button type="button" onClick={downloadHtml}>
+
+          {saved.length > 0 && (
+            <label>
+              Какой урок сохранить
+              <select value={chosenFrame} onChange={(event) => setChosenFrame(event.target.value)}>
+                {saved.map((entry) => (
+                  <option key={entry.frameId} value={entry.frameId}>
+                    {entry.lesson.meta.topic}
+                    {entry.lesson.meta.student ? ` · ${entry.lesson.meta.student}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={withPictures}
+              onChange={(event) => setWithPictures(event.target.checked)}
+            />
+            <span>
+              с картинками с доски
+              <span className="hint">
+                заберёт всё, что вы положили на урок руками, и вошьёт прямо в файл
+              </span>
+            </span>
+          </label>
+
+          <button type="button" onClick={() => void downloadHtml()}>
             Скачать урок файлом (HTML)
             <span className="hint">
               карточки перетаскиваются, задания проверяют себя сами — работает в любом браузере

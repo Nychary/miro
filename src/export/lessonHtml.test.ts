@@ -36,6 +36,28 @@ describe('полнота экспорта', () => {
     expect(html).toContain('Last summer we <span class="slot" data-answer="went"></span> to Italy by train.')
   })
 
+  it('картинки с доски встают в свои секции', () => {
+    const pixel = 'data:image/png;base64,iVBORw0KGgo='
+    const html = lessonToHtml(PHYSICS_SAMPLE, {
+      images: [
+        { dataUrl: pixel, alt: 'шапка', blockIndex: -1, widthRatio: 1 },
+        { dataUrl: pixel, alt: 'схема цепи', blockIndex: 1, widthRatio: 0.4 },
+      ],
+    })
+
+    // Картинка шапки идёт до первой секции, картинка блока — после его заголовка.
+    const cover = html.indexOf('alt="шапка"')
+    const firstSection = html.indexOf('<section>')
+    const scheme = html.indexOf('alt="схема цепи"')
+    expect(cover).toBeGreaterThan(0)
+    expect(cover).toBeLessThan(firstSection)
+    expect(scheme).toBeGreaterThan(firstSection)
+
+    // Ширина повторяет доску, а сама картинка вшита в файл.
+    expect(html).toContain('style="width:40%"')
+    expect(html).toContain(`src="${pixel}"`)
+  })
+
   it('интерактивные задания получают карточки, зоны и самопроверку', () => {
     const html = lessonToHtml(ENGLISH_SAMPLE)
 

@@ -18,6 +18,7 @@ import type {
 } from '../lesson/schema'
 import { GAP_MARKER, REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/schema'
 import { shuffle } from '../render/composition'
+import type { LessonImage } from './boardImages'
 
 /**
  * Рендер урока в самодостаточный HTML-файл.
@@ -42,8 +43,17 @@ import { shuffle } from '../render/composition'
 /** Типы блоков, которым нужен перетаскиватель карточек. */
 const INTERACTIVE_TYPES = new Set<Block['type']>(['matching', 'sorting', 'gapfill'])
 
-export function lessonToHtml(lesson: Lesson): string {
+export interface ExportOptions {
+  /**
+   * Картинки, снятые с доски. Раскладываются по секциям: оформление урока
+   * делает человек, и в файле оно должно стоять там же, где стояло на доске.
+   */
+  images?: LessonImage[]
+}
+
+export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): string {
   const { meta } = lesson
+  const images = options.images ?? []
 
   const details = [
     meta.subject === 'physics' ? 'Физика' : 'Английский',
@@ -57,8 +67,12 @@ export function lessonToHtml(lesson: Lesson): string {
   const answers = lesson.blocks.find((block): block is AnswersBlock => block.type === 'answers')
   const body = lesson.blocks
     .filter((block) => block.type !== 'answers')
-    .map((block) => renderBlock(block, lesson))
+    .map((block, index) => renderBlock(block, lesson) + gallery(images, index))
     .join('\n')
+
+  // Картинки выше первой секции — это фон и шапка урока: их место сразу
+  // под заголовком, как и на доске.
+  const cover = gallery(images, -1)
 
   const hasInteractive = lesson.blocks.some((block) => INTERACTIVE_TYPES.has(block.type))
 
@@ -76,6 +90,7 @@ export function lessonToHtml(lesson: Lesson): string {
   <p class="meta">${esc(details.join(' · '))}</p>
   ${meta.styleEmoji?.length ? `<p class="deco">${meta.styleEmoji.map(esc).join(' ')}</p>` : ''}
 </header>
+${cover}
 ${body}
 ${answers ? renderAnswers(answers, lesson) : ''}
 ${hasInteractive ? `<script>${SCRIPT}</script>` : ''}
@@ -325,6 +340,28 @@ function section(title: string, inner: string): string {
   return `<section><h2>${esc(title)}</h2>\n${inner}</section>`
 }
 
+/**
+ * Картинки, лежавшие на доске рядом с этой секцией.
+ *
+ * Ширина повторяет доску: маленькая наклейка остаётся наклейкой, а фон во всю
+ * ширину урока — фоном. Точной раскладки не выйдет — файл верстается сверху
+ * вниз, а на доске картинка могла лежать поверх карточки, — но узнаваемость
+ * оформления это сохраняет.
+ */
+function gallery(images: LessonImage[], blockIndex: number): string {
+  const mine = images.filter((image) => image.blockIndex === blockIndex)
+  if (mine.length === 0) return ''
+
+  return `<div class="pictures">${mine
+    .map(
+      (image) =>
+        `<img src="${image.dataUrl}" alt="${esc(image.alt)}" style="width:${Math.round(
+          Math.max(12, Math.min(100, image.widthRatio * 100)),
+        )}%">`,
+    )
+    .join('')}</div>`
+}
+
 function list(items: string[], className = ''): string {
   return `<ul${className ? ` class="${className}"` : ''}>${items
     .map((item) => `<li>${esc(item)}</li>`)
@@ -411,6 +448,8 @@ span.slot .chip { margin: 1px 0; }
   color: #fff; font: inherit; cursor: pointer; }
 .btn.reset { background: transparent; color: #4262ff; }
 .verdict { font-weight: 600; }
+.pictures { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin: 10px 0; }
+.pictures img { max-width: 100%; height: auto; border-radius: 8px; break-inside: avoid; }
 .hints { margin-top: 8px; }
 .answers { break-before: page; margin-top: 40px; padding-top: 8px; border-top: 3px dashed #d64545; }
 .answers h2 { border-top: none; color: #a11; }

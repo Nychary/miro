@@ -3,7 +3,7 @@ import { titleFor, type AnswersBlock, type Block, type Lesson } from '../lesson/
 import { renderBlock } from './blocks'
 import { Canvas, bold, escapeHtml, paragraphs, type CanvasItem } from './canvas'
 import { card, section } from './composition'
-import { saveExercises } from './metadata'
+import { saveExercises, saveLessonSnapshot, type BlockAnchor } from './metadata'
 import {
   ANSWERS_OFFSET_X,
   CONTENT_WIDTH,
@@ -64,6 +64,10 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
   let answersCanvas: Canvas | null = null
   let decorations: Text[] = []
 
+  // Вертикальные границы секций. Нужны экспорту: по ним картинки, которые
+  // репетитор потом положит на урок руками, попадут в файл под своей секцией.
+  const anchors: BlockAnchor[] = []
+
   // Фаза 1: содержимое. Падение здесь оставило бы на доске бессмысленную
   // россыпь объектов — прибираем за собой и отдаём ошибку дальше.
   const progress = options.onProgress ?? (() => undefined)
@@ -75,7 +79,9 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
 
     for (const [index, block] of drawable.entries()) {
       progress(`Блок ${index + 1} из ${drawable.length}: ${titleFor(block, lesson.meta.language)}`)
+      const top = canvas.top
       await renderBlock(canvas, block, lesson)
+      anchors.push({ index, top, bottom: canvas.top })
     }
 
     // Декорации рассыпаются по всей площади урока и уходят в самый низ
@@ -119,6 +125,23 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
     warnings.push(
       `Урок нарисован, но не поместился в один фрейм Miro (${reason(error)}). Он лежит на доске без рамки — работать можно, двигать урок целиком придётся выделением.`,
     )
+  }
+
+  // Снимок урока живёт на доске рядом с фреймом: панель можно перезагрузить,
+  // закрыть, открыть с другого компьютера — файл-страховку всё равно соберём.
+  if (frame) {
+    try {
+      await saveLessonSnapshot({
+        frameId: frame.id,
+        lesson,
+        anchors,
+        savedAt: new Date().toISOString(),
+      })
+    } catch (error) {
+      warnings.push(
+        `Урок на доске, но сохранить его в память доски не удалось (${reason(error)}) — скачать файлом получится только до перезагрузки панели.`,
+      )
+    }
   }
 
   if (canvas.exercises.length > 0) {

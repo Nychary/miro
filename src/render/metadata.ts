@@ -1,4 +1,5 @@
 import type { BaseItem } from '@mirohq/websdk-types'
+import type { Lesson } from '../lesson/schema'
 
 /**
  * Разметка интерактивных заданий на доске.
@@ -23,6 +24,9 @@ import type { BaseItem } from '@mirohq/websdk-types'
  */
 
 export const METADATA_KEY = 'lessonBuilder'
+
+const SNAPSHOT_KEY_PREFIX = 'snapshot:'
+const SNAPSHOT_INDEX_KEY = 'snapshots:index'
 
 /**
  * Устаревший ключ: раньше все уроки лежали одним массивом. На большом юните
@@ -161,4 +165,78 @@ function asLesson(raw: unknown): LessonExercises | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const entry = raw as LessonExercises
   return typeof entry.frameId === 'string' && Array.isArray(entry.exercises) ? entry : null
+}
+
+// ---------------------------------------------------------------------------
+// Снимок урока: сам JSON, из которого урок был нарисован
+//
+// Панель — обычная веб-страница внутри Miro, и любое обновление вкладки стирает
+// её состояние. Без снимка это значило, что скачать урок файлом можно было
+// ровно до первого F5, а потом — только нарисовав его заново. Теперь урок
+// живёт на доске рядом со своим фреймом: панель перезагрузили, репетитор
+// вернулся через неделю, села за другой компьютер — файл всё ещё можно забрать.
+// ---------------------------------------------------------------------------
+
+export interface BlockAnchor {
+  /** Позиция блока в `lesson.blocks`. */
+  index: number
+  /** Вертикальные границы секции в координатах доски. */
+  top: number
+  bottom: number
+}
+
+export interface LessonSnapshot {
+  frameId: string
+  lesson: Lesson
+  /**
+   * Где какая секция оказалась на доске. Нужно экспорту: картинки, которые
+   * репетитор вручную положил на урок, раскладываются по секциям по своей
+   * вертикали, а не сваливаются кучей в конец файла.
+   */
+  anchors: BlockAnchor[]
+  /** ISO-дата отрисовки — по ней панель показывает свежие уроки первыми. */
+  savedAt: string
+}
+
+export async function saveLessonSnapshot(snapshot: LessonSnapshot): Promise<void> {
+  const index = await readSnapshotIndex()
+  const updated = [...index.filter((id) => id !== snapshot.frameId), snapshot.frameId]
+  const evicted = updated.slice(0, Math.max(0, updated.length - HISTORY_LIMIT))
+  const kept = updated.slice(-HISTORY_LIMIT)
+
+  await miro.board.setAppData(SNAPSHOT_KEY_PREFIX + snapshot.frameId, snapshot as unknown as MetadataValue)
+  await miro.board.setAppData(SNAPSHOT_INDEX_KEY, kept as unknown as MetadataValue)
+  for (const id of evicted) {
+    await miro.board.setAppData(SNAPSHOT_KEY_PREFIX + id, null)
+  }
+}
+
+export async function loadLessonSnapshot(frameId: string): Promise<LessonSnapshot | null> {
+  return asSnapshot(await miro.board.getAppData(SNAPSHOT_KEY_PREFIX + frameId))
+}
+
+/**
+ * Уроки, которые доска помнит целиком. Свежие — первыми: в панели это список
+ * выбора, и обычно нужен последний урок, а не первый за учебный год.
+ */
+export async function listLessonSnapshots(): Promise<LessonSnapshot[]> {
+  const index = await readSnapshotIndex()
+  const entries: LessonSnapshot[] = []
+  for (const frameId of index) {
+    const entry = asSnapshot(await miro.board.getAppData(SNAPSHOT_KEY_PREFIX + frameId))
+    if (entry) entries.push(entry)
+  }
+  return entries.reverse()
+}
+
+async function readSnapshotIndex(): Promise<string[]> {
+  const raw = await miro.board.getAppData(SNAPSHOT_INDEX_KEY)
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []
+}
+
+function asSnapshot(raw: unknown): LessonSnapshot | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const entry = raw as LessonSnapshot
+  if (typeof entry.frameId !== 'string' || !entry.lesson || !Array.isArray(entry.lesson.blocks)) return null
+  return { ...entry, anchors: Array.isArray(entry.anchors) ? entry.anchors : [] }
 }
