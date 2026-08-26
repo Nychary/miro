@@ -306,7 +306,7 @@ export function App() {
     // Картинки живут только на доске, поэтому забираем их прямо перед
     // сохранением: репетитор украшает урок уже после отрисовки, и в файл
     // должно попасть то, что на доске сейчас, а не то, что было при генерации.
-    let images: Awaited<ReturnType<typeof collectFrameImages>> = { images: [], skipped: 0 }
+    let images: Awaited<ReturnType<typeof collectFrameImages>> = { images: [], notes: [], skipped: 0 }
     let imageError: string | null = null
     let warningsFromWork: string | null = null
 
@@ -318,8 +318,11 @@ export function App() {
     if (withPictures && frameId) {
       setStatus({ kind: 'busy', message: 'Собираю картинки с доски…' })
       try {
-        images = await collectFrameImages(frameId, snapshot?.anchors ?? [], (message) =>
-          setStatus({ kind: 'busy', message }),
+        images = await collectFrameImages(
+          frameId,
+          snapshot?.anchors ?? [],
+          snapshot?.itemIds ?? [],
+          (message) => setStatus({ kind: 'busy', message }),
         )
       } catch (error) {
         imageError = error instanceof Error ? error.message : 'неизвестная ошибка Miro'
@@ -338,7 +341,12 @@ export function App() {
       }
     }
 
-    const html = lessonToHtml(lesson, { images: images.images, audience, ...(work ? { work } : {}) })
+    const html = lessonToHtml(lesson, {
+      images: images.images,
+      notes: images.notes,
+      audience,
+      ...(work ? { work } : {}),
+    })
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')

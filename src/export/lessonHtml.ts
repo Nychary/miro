@@ -22,7 +22,7 @@ import type {
 } from '../lesson/schema'
 import { GAP_MARKER, REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/schema'
 import { shuffle } from '../render/composition'
-import type { LessonImage } from './boardImages'
+import type { LessonImage, LessonNote } from './boardImages'
 import type { BoardWork } from './boardWork'
 
 /**
@@ -51,6 +51,8 @@ export interface ExportOptions {
    * делает человек, и в файле оно должно стоять там же, где стояло на доске.
    */
   images?: LessonImage[]
+  /** Подписи и наклейки, дописанные на доске руками. */
+  notes?: LessonNote[]
   /**
    * Работа ученика: что он разложил по клеткам и что написал на полях.
    * С ней файл перестаёт быть пустым бланком и становится памятью о занятии.
@@ -66,6 +68,7 @@ export interface ExportOptions {
 
 export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): string {
   const images = options.images ?? []
+  const notes = options.notes ?? []
   const work = options.work
   const forStudent = options.audience === 'student'
 
@@ -89,12 +92,12 @@ export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): strin
   const answers = lesson.blocks.find((block): block is AnswersBlock => block.type === 'answers')
   const body = lesson.blocks
     .filter((block) => block.type !== 'answers')
-    .map((block, index) => renderBlock(block, lesson) + gallery(images, index))
+    .map((block, index) => renderBlock(block, lesson) + gallery(images, index) + handNotes(notes, index))
     .join('\n')
 
   // Картинки выше первой секции — это фон и шапка урока: их место сразу
   // под заголовком, как и на доске.
-  const cover = gallery(images, -1)
+  const cover = gallery(images, -1) + handNotes(notes, -1)
 
   const language = meta.language
 
@@ -510,6 +513,20 @@ function section(title: string, inner: string): string {
  * вниз, а на доске картинка могла лежать поверх карточки, — но узнаваемость
  * оформления это сохраняет.
  */
+/**
+ * Подписи, дописанные на доске рукой.
+ *
+ * Это часть урока наравне с картинками: заголовок красивым шрифтом, пометка
+ * на полях, вопрос ученика на стикере. В файл они идут туда же, где стояли
+ * на доске, — иначе урок теряет половину смысла.
+ */
+function handNotes(notes: LessonNote[], blockIndex: number): string {
+  const mine = notes.filter((note) => note.blockIndex === blockIndex)
+  if (mine.length === 0) return ''
+
+  return `<div class="hand">${mine.map((note) => `<span>${esc(note.text)}</span>`).join('')}</div>`
+}
+
 function gallery(images: LessonImage[], blockIndex: number): string {
   const mine = images.filter((image) => image.blockIndex === blockIndex)
   if (mine.length === 0) return ''
@@ -650,6 +667,9 @@ details.pull[open] { background: #fff; }
 table.work td, table.work th { font-size: 14px; }
 table.work tr.ok td:last-child { color: #2f9e63; font-weight: 600; }
 table.work tr.bad td:last-child { color: #d64545; font-weight: 600; }
+.hand { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.hand span { padding: 8px 14px; border: 1px solid #e0c840; border-radius: 10px;
+  background: #fffbe8; font-size: 15px; }
 .pictures { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin: 10px 0; }
 .pictures img { max-width: 100%; height: auto; border-radius: 8px; break-inside: avoid; }
 .hints { margin-top: 8px; }

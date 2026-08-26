@@ -134,6 +134,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
         lesson,
         anchors,
         savedAt: new Date().toISOString(),
+        itemIds: [...canvas.items, ...decorations].map((item) => item.id),
       })
     } catch (error) {
       warnings.push(

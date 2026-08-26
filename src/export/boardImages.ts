@@ -27,8 +27,16 @@ export interface LessonImage {
   widthRatio: number
 }
 
+/** Подпись, наклейка или заметка, добавленная человеком поверх урока. */
+export interface LessonNote {
+  text: string
+  blockIndex: number
+}
+
 export interface CollectResult {
   images: LessonImage[]
+  /** Что дописано на доске руками: подписи, стикеры, пометки. */
+  notes: LessonNote[]
   /** Сколько картинок не удалось забрать — о них честно говорим в панели. */
   skipped: number
 }
@@ -48,13 +56,15 @@ interface Placed {
 export async function collectFrameImages(
   frameId: string,
   anchors: BlockAnchor[],
+  ownIds: string[] = [],
   onProgress?: (message: string) => void,
 ): Promise<CollectResult> {
   const [frame] = (await miro.board.get({ id: [frameId] })) as Frame[]
-  if (!frame) return { images: [], skipped: 0 }
+  if (!frame) return { images: [], notes: [], skipped: 0 }
 
+  const notes = await handwritten(frame, ownIds, anchors)
   const pictures = await picturesOver(frame)
-  if (pictures.length === 0) return { images: [], skipped: 0 }
+  if (pictures.length === 0) return { images: [], notes, skipped: 0 }
 
   // Сверху вниз — в том же порядке, в каком идут секции в файле.
   const ordered = [...pictures].sort((a, b) => a.y - b.y || a.x - b.x)
@@ -86,7 +96,55 @@ export async function collectFrameImages(
     }
   }
 
-  return { images, skipped }
+  return { images, notes, skipped }
+}
+
+/**
+ * Подписи и наклейки, дописанные поверх урока.
+ *
+ * Оформление — не только картинки: заголовок красивым шрифтом, пометка на
+ * полях, стикер с вопросом ученика. Всё это обычный текст доски, и в файл он
+ * не попадал вовсе. Отличаем чужое от своего по списку объектов, который урок
+ * запомнил при отрисовке: чего в нём нет, то принёс человек.
+ */
+async function handwritten(
+  frame: Frame,
+  ownIds: string[],
+  anchors: BlockAnchor[],
+): Promise<LessonNote[]> {
+  if (ownIds.length === 0) return []
+
+  const own = new Set(ownIds)
+  const children = await frame.getChildren()
+  const mine = children.filter(
+    (child) => !own.has(child.id) && (child.type === 'text' || child.type === 'sticky_note'),
+  )
+  if (mine.length === 0) return []
+
+  const parents = await loadParents(mine as unknown as Positioned[])
+  parents.set(frame.id, frame as unknown as Positioned)
+
+  const notes: LessonNote[] = []
+  for (const child of mine) {
+    const text = stripTags((child as unknown as { content?: string }).content ?? '')
+    if (!text) continue
+    const center = absoluteCenter(child as unknown as Positioned, parents)
+    notes.push({ text, blockIndex: blockAt(center.y, anchors) })
+  }
+  return notes
+}
+
+/** Содержимое объектов Miro — размеченный текст; в файл идёт чистый. */
+function stripTags(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /**
