@@ -121,3 +121,22 @@ describe('приёмы оформления', () => {
     expect(prompt).not.toContain('pullout (')
   })
 })
+
+describe('объём текста для чтения', () => {
+  it('растёт вместе с уровнем и связан с числом новых слов', () => {
+    const a2 = buildPrompt({ ...BASE, subject: 'english', level: 'A2', template: 'language' })
+    const c1 = buildPrompt({ ...BASE, subject: 'english', level: 'C1', template: 'language' })
+
+    // Замеры Cambridge: текст A2 Key — около 250 слов, C1 Advanced — около 750.
+    expect(a2).toContain('150-250 слов')
+    expect(c1).toContain('500-700 слов')
+    // Лексика идёт в паре с длиной, а не задаётся отдельно.
+    expect(a2).toContain('6-8 слов с переводом')
+    expect(c1).toContain('12-14 слов с переводом')
+  })
+
+  it('незнакомый формат уровня не роняет генерацию', () => {
+    const school = buildPrompt({ ...BASE, subject: 'english', level: '7 класс', template: 'language' })
+    expect(school).toContain('250-350 слов')
+  })
+})

@@ -64,6 +64,35 @@ export function buildPrompt(request: LessonRequest): string {
 // ---------------------------------------------------------------------------
 
 /**
+ * Сколько текста и лексики выдержит ученик этого уровня.
+ *
+ * Цифры сверены с замерами по официальным материалам Cambridge: текст третьей
+ * части A2 Key — 251 слово, B1 Preliminary — 354, пятая часть B2 First — 652,
+ * C1 Advanced — 755, C2 Proficiency — 799. На уроке берём заметно меньше
+ * экзаменационного: экзамен читают один раз на скорость, а на занятии текст
+ * разбирают дважды и по дороге вытаскивают из него лексику.
+ *
+ * Второе правило важнее первого: новых слов примерно длина текста, делённая
+ * на 45. Так текст и лексика перестают задаваться независимо — иначе выходит
+ * рассказ на восемьсот слов с шестью новыми словами или наоборот.
+ */
+const READING_BUDGET: Record<string, { words: string; fresh: string }> = {
+  a1: { words: '80-120', fresh: '4-6' },
+  a2: { words: '150-250', fresh: '6-8' },
+  b1: { words: '250-350', fresh: '8-10' },
+  b2: { words: '350-500', fresh: '10-12' },
+  c1: { words: '500-700', fresh: '12-14' },
+  c2: { words: '700-900', fresh: '12-15' },
+}
+
+function readingBudget(level: string): { words: string; fresh: string } {
+  const found = Object.keys(READING_BUDGET).find((key) => level.toLowerCase().includes(key))
+  // Уровень пишут по-разному («B1», «B1+», «крепкий A2»), поэтому ищем
+  // подстроку, а не точное совпадение; школьным классам даём средний объём.
+  return READING_BUDGET[found ?? 'b1'] as { words: string; fresh: string }
+}
+
+/**
  * Какие приёмы оформления пойдут в урок.
  *
  * Выбор всегда за репетитором: приём работает, пока он неожиданность, а
@@ -189,8 +218,8 @@ function fiveStructure(request: LessonRequest): string {
  * держат языковые школы, и он заметно живее, чем «правило — упражнение».
  */
 function languageStructure(request: LessonRequest): string {
-  const scale = request.durationMin <= 45 ? 'short' : request.durationMin >= 90 ? 'long' : 'normal'
-  const vocab = scale === 'short' ? '6' : scale === 'long' ? '12' : '8-10'
+  const budget = readingBudget(request.level)
+  const vocab = budget.fresh
   const recall = request.prevTopic?.trim()
     ? `со ссылкой на прошлую тему («${request.prevTopic.trim()}»)`
     : 'на знакомом ученику языковом материале'
@@ -204,8 +233,10 @@ function languageStructure(request: LessonRequest): string {
     `3. vocabulary — ${vocab} слов с переводом, транскрипцией и примером,`,
     '   и сразу за ним один приём на закрепление: flashlight (слова спрятаны в темноте),',
     '   halves (слово и определение) или mysterybox (собрать фразу из новых слов)',
-    '4. reading — текст на 3-5 абзацев, где эта же лексика работает в контексте,',
-    '   плюс 3-4 вопроса на понимание в "questions"; текст живой и современный',
+    `4. reading — текст на ${budget.words} слов, где эта же лексика работает в контексте,`,
+    '   плюс 3-4 вопроса на понимание в "questions"; текст живой и современный.',
+    '   Короче нижней границы делать нельзя: на таком тексте не за что зацепиться ни',
+    '   лексике, ни обсуждению. Длиннее верхней — ученик утонет на разборе.',
     '5. grammar — правило урока с таблицей форм и типичными ошибками,',
     '   и сразу за ним choice на 5-6 предложений: варианты различаются мелочью —',
     '   формой глагола, предлогом, порядком слов, — а не очевидной ерундой',
@@ -247,7 +278,9 @@ function structure(request: LessonRequest): string {
     ].join('\n')
   }
 
-  const vocab = scale === 'short' ? '5' : scale === 'long' ? '10–12' : '6–8'
+  // Лексика по уровню, а не по длине занятия: за час до C1 столько же слов,
+  // сколько за час до A2, ученик всё равно не унесёт.
+  const vocab = readingBudget(request.level).fresh
   return [
     'Структура урока — блоки строго в этом порядке:',
     '1. objectives — 3 цели',
