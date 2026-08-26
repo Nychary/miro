@@ -46,7 +46,7 @@ export function App() {
   const [style, setStyle] = useState('')
   // План из пяти упражнений — авторская структура репетитора, поэтому
   // он и по умолчанию: классическая остаётся как запасная.
-  const [template, setTemplate] = useState<'five' | 'classic'>('five')
+  const [template, setTemplate] = useState<'five' | 'classic' | 'language'>('five')
   const [prevTopic, setPrevTopic] = useState('')
 
   const [prompt, setPrompt] = useState('')
@@ -430,13 +430,16 @@ export function App() {
           Структура урока
           <select
             value={template}
-            onChange={(event) => setTemplate(event.target.value as 'five' | 'classic')}
+            onChange={(event) => setTemplate(event.target.value as 'five' | 'classic' | 'language')}
           >
             <option value="five">Короткая: 5 упражнений подряд</option>
             <option value="classic">Полная: с целями, итогами и домашкой</option>
+            <option value="language">Языковая: лексика, текст, грамматика, разговор</option>
           </select>
           <span className="hint">
-            {template === 'five'
+            {template === 'language'
+              ? 'Разминка, план, новая лексика с закреплением, текст с этой же лексикой, грамматика с упражнением, разговор, итоги. Семь шагов языковой школы: слово сначала встречается в речи и тексте, а правило разбирается после.'
+              : template === 'five'
               ? 'Вспоминаем прошлое, разбираем новое картой, практика, игра, рефлексия. Ровно пять упражнений, без целей и домашки — для занятия, которое идёт по накатанной.'
               : subject === 'physics'
                 ? 'Цели, разминка, теория, формулы, разбор примера, задачи, игра, вопросы «почему», итоги, домашка. Длиннее и подробнее — для новой темы.'

@@ -20,7 +20,7 @@ export interface LessonRequest extends Omit<LessonMeta, 'language'> {
    * Шаблон структуры урока. «five» — авторский план репетитора из пяти
    * упражнений: Вспоминаем, Новый материал, Практика, Игра, Рефлексия.
    */
-  template?: 'classic' | 'five'
+  template?: 'classic' | 'five' | 'language'
   /** Тема прошлого занятия — для упражнения «Вспоминаем» в шаблоне «five». */
   prevTopic?: string
 }
@@ -30,7 +30,11 @@ export function buildPrompt(request: LessonRequest): string {
     role(request.subject),
     task(request),
     styleSection(request.style),
-    request.template === 'five' ? fiveStructure(request) : structure(request),
+    request.template === 'five'
+      ? fiveStructure(request)
+      : request.template === 'language'
+        ? languageStructure(request)
+        : structure(request),
     teacherScript(request),
     SCHEMA_SPEC,
     contentRules(request.subject),
@@ -130,6 +134,44 @@ function fiveStructure(request: LessonRequest): string {
   ].join('\n')
 }
 
+/**
+ * Путь языкового занятия: разминка, лексика, текст, грамматика, разговор.
+ *
+ * Отличие от классической структуры в порядке: новое слово ученик сначала
+ * встречает в речи и в тексте и только потом разбирает правило. Такой порядок
+ * держат языковые школы, и он заметно живее, чем «правило — упражнение».
+ */
+function languageStructure(request: LessonRequest): string {
+  const scale = request.durationMin <= 45 ? 'short' : request.durationMin >= 90 ? 'long' : 'normal'
+  const vocab = scale === 'short' ? '6' : scale === 'long' ? '12' : '8-10'
+  const recall = request.prevTopic?.trim()
+    ? `со ссылкой на прошлую тему («${request.prevTopic.trim()}»)`
+    : 'на знакомом ученику языковом материале'
+
+  return [
+    'Структура урока — семь шагов строго в этом порядке:',
+    `1. warmup c "title": "Разминка" — 3-4 лёгких вопроса или мини-игра ${recall};`,
+    '   никакой новой лексики, задача — разговорить ученика',
+    '2. objectives c "title": "План урока" — 3 пункта в формате «сегодня научимся…»,',
+    '   понятных ученику, а не методисту',
+    `3. vocabulary — ${vocab} слов с переводом, транскрипцией и примером,`,
+    '   и сразу за ним один приём на закрепление: flashlight (слова спрятаны в темноте),',
+    '   halves (слово и определение) или mysterybox (собрать фразу из новых слов)',
+    '4. reading — текст на 3-5 абзацев, где эта же лексика работает в контексте,',
+    '   плюс 3-4 вопроса на понимание в "questions"; текст живой и современный',
+    '5. grammar — правило урока с таблицей форм и типичными ошибками,',
+    '   и сразу за ним gapfill на 5-6 предложений плюс 2-3 лишних варианта',
+    '6. speaking или pullout — 4-5 вопросов для разговора, где новую лексику',
+    '   и грамматику нельзя не использовать',
+    '7. reflection c "title": "Подводим итоги" со своими подписями колонок в "prompts",',
+    '   затем summary из 3 пунктов и homework из 3 заданий',
+    '8. answers — ключ ко всем заданиям с проверкой',
+    '',
+    'Держи связность: лексика из шага 3 обязана встретиться в тексте шага 4,',
+    'а грамматика шага 5 — в вопросах шага 6. Урок должен читаться как одна',
+    'история, а не как набор упражнений на одну тему.',
+  ].join('\n')
+}
 /**
  * Состав блоков зависит от предмета и длительности. Без этого нейросеть
  * выдаёт то три задачи, то пятнадцать, и уроки перестают быть похожими друг
