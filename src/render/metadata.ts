@@ -134,11 +134,13 @@ export async function saveExercises(data: LessonExercises): Promise<void> {
   const evicted = updated.slice(0, Math.max(0, updated.length - HISTORY_LIMIT))
   const kept = updated.slice(-HISTORY_LIMIT)
 
-  await miro.board.setAppData(LESSON_KEY_PREFIX + data.frameId, plain(data) as unknown as MetadataValue)
-  await miro.board.setAppData(INDEX_KEY, plain(kept) as unknown as MetadataValue)
+  // Тот же порядок, что и у снимков: сначала место, потом указатель, потом
+  // данные — см. комментарий к saveLessonSnapshot.
   for (const id of evicted) {
     await miro.board.setAppData(LESSON_KEY_PREFIX + id, null)
   }
+  await miro.board.setAppData(INDEX_KEY, plain(kept) as unknown as MetadataValue)
+  await miro.board.setAppData(LESSON_KEY_PREFIX + data.frameId, plain(data) as unknown as MetadataValue)
 }
 
 export async function loadExercises(frameId: string): Promise<LessonExercises | null> {
@@ -212,20 +214,30 @@ export interface LessonSnapshot {
   savedAt: string
 }
 
+/**
+ * Порядок записи важнее, чем кажется.
+ *
+ * Сначала освобождаем место, потом обновляем указатель и только в конце пишем
+ * сам урок. При обратном порядке хранилище загоняло себя в тупик: запись урока
+ * упиралась в нехватку места и падала ДО очистки, а значит освободить место
+ * было уже нечем — и каждый следующий урок оставался без страховки. Лишний
+ * идентификатор в указателе безвреден: чтение молча пропускает ключи, по
+ * которым ничего не лежит.
+ */
 export async function saveLessonSnapshot(snapshot: LessonSnapshot): Promise<void> {
   const index = await readSnapshotIndex()
   const updated = [...index.filter((id) => id !== snapshot.frameId), snapshot.frameId]
   const evicted = updated.slice(0, Math.max(0, updated.length - HISTORY_LIMIT))
   const kept = updated.slice(-HISTORY_LIMIT)
 
+  for (const id of evicted) {
+    await miro.board.setAppData(SNAPSHOT_KEY_PREFIX + id, null)
+  }
+  await miro.board.setAppData(SNAPSHOT_INDEX_KEY, plain(kept) as unknown as MetadataValue)
   await miro.board.setAppData(
     SNAPSHOT_KEY_PREFIX + snapshot.frameId,
     plain(snapshot) as unknown as MetadataValue,
   )
-  await miro.board.setAppData(SNAPSHOT_INDEX_KEY, plain(kept) as unknown as MetadataValue)
-  for (const id of evicted) {
-    await miro.board.setAppData(SNAPSHOT_KEY_PREFIX + id, null)
-  }
 }
 
 export async function loadLessonSnapshot(frameId: string): Promise<LessonSnapshot | null> {
@@ -235,19 +247,28 @@ export async function loadLessonSnapshot(frameId: string): Promise<LessonSnapsho
 /**
  * Уроки, которые доска помнит целиком. Свежие — первыми: в панели это список
  * выбора, и обычно нужен последний урок, а не первый за учебный год.
+ *
+ * Читаем всё хранилище одним запросом, а не по ключу на урок. Двадцать
+ * последовательных обращений к доске — это заметная пауза при каждом открытии
+ * панели, и чем дольше живёт доска, тем она длиннее.
  */
 export async function listLessonSnapshots(): Promise<LessonSnapshot[]> {
-  const index = await readSnapshotIndex()
+  const all = (await miro.board.getAppData()) as Record<string, unknown>
+  const index = asIndex(all[SNAPSHOT_INDEX_KEY])
+
   const entries: LessonSnapshot[] = []
   for (const frameId of index) {
-    const entry = asSnapshot(await miro.board.getAppData(SNAPSHOT_KEY_PREFIX + frameId))
+    const entry = asSnapshot(all[SNAPSHOT_KEY_PREFIX + frameId])
     if (entry) entries.push(entry)
   }
   return entries.reverse()
 }
 
 async function readSnapshotIndex(): Promise<string[]> {
-  const raw = await miro.board.getAppData(SNAPSHOT_INDEX_KEY)
+  return asIndex(await miro.board.getAppData(SNAPSHOT_INDEX_KEY))
+}
+
+function asIndex(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []
 }
 

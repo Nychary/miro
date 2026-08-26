@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseLessonResponse } from '../lesson/validate'
-import { saveLessonSnapshot } from './metadata'
+import { listLessonSnapshots, saveLessonSnapshot } from './metadata'
 
 /**
  * Урок уходит в хранилище доски ровно так, как его разобрал валидатор, —
@@ -10,6 +10,7 @@ import { saveLessonSnapshot } from './metadata'
  */
 
 const setAppData = vi.fn()
+const META = { subject: 'english', topic: 'Тема', level: 'A2', durationMin: 60, language: 'ru' } as const
 
 beforeEach(() => {
   setAppData.mockReset()
@@ -52,6 +53,47 @@ describe('снимок урока', () => {
     for (const [key, value] of setAppData.mock.calls) {
       expect(hasUndefined(value), `в записи ${key} осталось undefined`).toBe(false)
     }
+  })
+
+  it('сначала освобождает место, потом пишет урок', async () => {
+    // История уже полна, и новый урок вытесняет самый старый.
+    const ids = Array.from({ length: 20 }, (_, i) => `old-${i}`)
+    vi.stubGlobal('miro', {
+      board: { setAppData, getAppData: vi.fn().mockResolvedValue(ids) },
+    })
+
+    await saveLessonSnapshot({
+      frameId: 'new-frame',
+      lesson: { meta: META, blocks: [] },
+      anchors: [],
+      savedAt: '2026-08-26T10:00:00.000Z',
+    })
+
+    const keys = setAppData.mock.calls.map(([key]) => key)
+    const cleared = keys.indexOf('snapshot:old-0')
+    const wrote = keys.indexOf('snapshot:new-frame')
+    // Если писать урок раньше очистки, при переполнении памяти доски место
+    // освободить будет уже нечем: запись упадёт до того, как дойдёт до уборки.
+    expect(cleared).toBeGreaterThanOrEqual(0)
+    expect(cleared).toBeLessThan(wrote)
+    // Указатель обновляется тоже раньше данных: осиротевший ключ хуже лишней
+    // записи в указателе — её чтение просто пропустит.
+    expect(keys.indexOf('snapshots:index')).toBeLessThan(wrote)
+  })
+
+  it('список уроков читается одним обращением к доске', async () => {
+    const getAppData = vi.fn().mockResolvedValue({
+      'snapshots:index': ['a', 'b'],
+      'snapshot:a': { frameId: 'a', lesson: { meta: META, blocks: [] }, anchors: [], savedAt: '1' },
+      'snapshot:b': { frameId: 'b', lesson: { meta: META, blocks: [] }, anchors: [], savedAt: '2' },
+    })
+    vi.stubGlobal('miro', { board: { setAppData, getAppData } })
+
+    const list = await listLessonSnapshots()
+
+    expect(getAppData).toHaveBeenCalledTimes(1)
+    // Свежие первыми: обычно нужен последний урок, а не первый за учебный год.
+    expect(list.map((entry) => entry.frameId)).toEqual(['b', 'a'])
   })
 })
 
