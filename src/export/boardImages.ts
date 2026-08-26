@@ -37,6 +37,13 @@ const MAX_WIDTH = 1200
 /** Потолок на файл целиком: почтой и мессенджером должно отправляться. */
 const TOTAL_BUDGET = 12 * 1024 * 1024
 
+/** Картинка вместе с её положением в координатах доски. */
+interface Placed {
+  picture: Image
+  x: number
+  y: number
+}
+
 export async function collectFrameImages(
   frameId: string,
   anchors: BlockAnchor[],
@@ -55,7 +62,8 @@ export async function collectFrameImages(
   let skipped = 0
   let budget = TOTAL_BUDGET
 
-  for (const [index, picture] of ordered.entries()) {
+  for (const [index, placed] of ordered.entries()) {
+    const picture = placed.picture
     onProgress?.(`Забираю картинку ${index + 1} из ${ordered.length}…`)
     const dataUrl = await toDataUrl(picture, budget)
     if (!dataUrl) {
@@ -67,7 +75,7 @@ export async function collectFrameImages(
     images.push({
       dataUrl,
       alt: picture.title || 'Иллюстрация урока',
-      blockIndex: blockAt(picture.y, anchors),
+      blockIndex: blockAt(placed.y, anchors),
       widthRatio: frame.width > 0 ? Math.min(1, picture.width / frame.width) : 0.5,
     })
 
@@ -90,11 +98,16 @@ export async function collectFrameImages(
  * туда и клал. Поэтому вторым заходом берём все картинки доски и оставляем те,
  * что попадают в прямоугольник фрейма.
  */
-async function picturesOver(frame: Frame): Promise<Image[]> {
-  const found = new Map<string, Image>()
+async function picturesOver(frame: Frame): Promise<Placed[]> {
+  const found = new Map<string, Placed>()
 
+  // Координаты ребёнка фрейма отсчитываются от центра фрейма, а не от доски:
+  // без пересчёта картинка «уезжала» на пол-урока вверх и попадала не в свою
+  // секцию, а у фрейма высотой в несколько тысяч пикселей — вообще в шапку.
   for (const child of await frame.getChildren()) {
-    if (child.type === 'image') found.set(child.id, child as Image)
+    if (child.type !== 'image') continue
+    const picture = child as Image
+    found.set(picture.id, { picture, x: frame.x + picture.x, y: frame.y + picture.y })
   }
 
   try {
@@ -106,9 +119,13 @@ async function picturesOver(frame: Frame): Promise<Image[]> {
 
     for (const picture of all) {
       if (found.has(picture.id)) continue
-      // Центр картинки внутри фрейма — значит, она лежит на этом уроке.
-      if (picture.x >= left && picture.x <= right && picture.y >= top && picture.y <= bottom) {
-        found.set(picture.id, picture)
+      // Чужой фрейм — чужой урок; сюда такая картинка не относится.
+      if (picture.parentId && picture.parentId !== frame.id) continue
+
+      const x = picture.parentId === frame.id ? frame.x + picture.x : picture.x
+      const y = picture.parentId === frame.id ? frame.y + picture.y : picture.y
+      if (x >= left && x <= right && y >= top && y <= bottom) {
+        found.set(picture.id, { picture, x, y })
       }
     }
   } catch {
@@ -133,13 +150,13 @@ function blockAt(y: number, anchors: BlockAnchor[]): number {
 /**
  * Скачивает картинку и превращает в data:-строку.
  *
- * Прямая загрузка через fetch — основной путь; если хранилище Miro не отдаст
- * ответ нашему домену, пробуем через <img> с CORS-запросом. Оба пути могут
- * упереться в чужие заголовки, и это не повод ронять экспорт: пропущенные
- * картинки просто пересчитываются в панели.
+ * Первым делом спрашиваем саму Miro: у картинки на доске есть getDataUrl(),
+ * и это единственный путь, которому не мешают правила доступа к чужому
+ * домену. Загрузка по ссылке остаётся запасной — на случай, если метод
+ * недоступен в этой версии SDK.
  */
 async function toDataUrl(picture: Image, budget: number): Promise<string | null> {
-  const bitmap = await loadBitmap(picture.url)
+  const bitmap = await loadBitmap(picture)
   if (!bitmap) return null
 
   const width = bitmap instanceof globalThis.Image ? bitmap.naturalWidth : bitmap.width
@@ -173,20 +190,35 @@ async function toDataUrl(picture: Image, budget: number): Promise<string | null>
 
 type Bitmap = ImageBitmap | HTMLImageElement
 
-async function loadBitmap(url: string): Promise<Bitmap | null> {
+async function loadBitmap(picture: Image): Promise<Bitmap | null> {
+  // Путь через SDK: Miro отдаёт свою же картинку без разговоров о доменах.
   try {
-    const response = await fetch(url, { mode: 'cors', credentials: 'omit' })
+    const dataUrl = await picture.getDataUrl()
+    if (dataUrl) {
+      const bitmap = await fromUrl(dataUrl)
+      if (bitmap) return bitmap
+    }
+  } catch {
+    // Старые версии SDK метода не знают — идём обычным путём.
+  }
+
+  try {
+    const response = await fetch(picture.url, { mode: 'cors', credentials: 'omit' })
     if (response.ok) {
       const blob = await response.blob()
       return await createImageBitmap(blob)
     }
   } catch {
-    // Ниже — попытка через <img>: у неё другие правила, и иногда проходит она.
+    // Последняя попытка — <img>: у него другие правила, иногда проходит он.
   }
 
-  return await new Promise((resolve) => {
+  return await fromUrl(picture.url, true)
+}
+
+function fromUrl(url: string, cors = false): Promise<Bitmap | null> {
+  return new Promise((resolve) => {
     const element = new globalThis.Image()
-    element.crossOrigin = 'anonymous'
+    if (cors) element.crossOrigin = 'anonymous'
     element.onload = () => resolve(element)
     element.onerror = () => resolve(null)
     element.src = url

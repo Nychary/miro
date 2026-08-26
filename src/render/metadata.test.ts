@@ -26,8 +26,13 @@ describe('снимок урока', () => {
     const parsed = parseLessonResponse(
       JSON.stringify({
         meta: { subject: 'english', topic: 'Present Simple', level: 'A2', durationMin: 60, language: 'ru' },
-        // У блока нет ни title, ни say — валидатор положит туда undefined.
-        blocks: [{ type: 'objectives', items: ['Цель'] }],
+        blocks: [
+          // У блока нет ни title, ни say — валидатор положит туда undefined.
+          { type: 'objectives', items: ['Цель'] },
+          // У рефлексии без подписей колонок undefined окажется ещё и в prompts.
+          { type: 'reflection' },
+          { type: 'tasks', items: [{ ref: 't1', statement: 'Задача без подсказки' }] },
+        ],
       }),
     )
     expect(parsed.ok).toBe(true)
@@ -40,9 +45,13 @@ describe('снимок урока', () => {
       savedAt: '2026-08-26T10:00:00.000Z',
     })
 
-    const [, value] = setAppData.mock.calls[0] ?? []
-    expect(value).toBeDefined()
-    expect(hasUndefined(value)).toBe(false)
+    // Проверяем каждую запись: снимок уходит не одним вызовом, а вместе
+    // с индексом, и достаточно одного undefined в любом из них, чтобы Miro
+    // отклонила запись целиком.
+    expect(setAppData.mock.calls.length).toBeGreaterThan(0)
+    for (const [key, value] of setAppData.mock.calls) {
+      expect(hasUndefined(value), `в записи ${key} осталось undefined`).toBe(false)
+    }
   })
 })
 
