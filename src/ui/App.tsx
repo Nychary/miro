@@ -65,14 +65,24 @@ export function App() {
   const statusRef = useRef<HTMLDivElement>(null)
   const busy = status.kind === 'busy'
 
-  const lessonAnswers = lastLesson?.blocks.find(
+  /**
+   * Урок, о котором сейчас говорит панель.
+   *
+   * После перезагрузки вкладки состояние React пусто, но доска помнит свои
+   * уроки — поэтому берём выбранный в списке, и только если списка ещё нет,
+   * опираемся на нарисованный в этой сессии. Иначе F5 стирал бы и ответы,
+   * и сценарий, и кнопку сохранения.
+   */
+  const activeLesson = saved.find((entry) => entry.frameId === chosenFrame)?.lesson ?? lastLesson
+
+  const lessonAnswers = activeLesson?.blocks.find(
     (block): block is Extract<Lesson['blocks'][number], { type: 'answers' }> => block.type === 'answers',
   )
 
-  const lessonScript = lastLesson
-    ? lastLesson.blocks
+  const lessonScript = activeLesson
+    ? activeLesson.blocks
         .filter((block) => block.say)
-        .map((block) => ({ title: titleFor(block, lastLesson.meta.language), say: block.say as string }))
+        .map((block) => ({ title: titleFor(block, activeLesson.meta.language), say: block.say as string }))
     : []
 
   // Живая проверка держит подписку на события доски и таймер опроса. Если
@@ -357,9 +367,17 @@ export function App() {
             value={template}
             onChange={(event) => setTemplate(event.target.value as 'five' | 'classic')}
           >
-            <option value="five">5 упражнений: Вспоминаем · Материал · Практика · Игра · Рефлексия</option>
-            <option value="classic">Классическая: теория · формулы · задачи · интерактивы</option>
+            <option value="five">Короткая: 5 упражнений подряд</option>
+            <option value="classic">Полная: с целями, итогами и домашкой</option>
           </select>
+          <span className="hint">
+            {template === 'five'
+              ? 'Вспоминаем прошлое, разбираем новое картой, практика, игра, рефлексия. Ровно пять упражнений, без целей и домашки — для занятия, которое идёт по накатанной.'
+              : subject === 'physics'
+                ? 'Цели, разминка, теория, формулы, разбор примера, задачи, игра, вопросы «почему», итоги, домашка. Длиннее и подробнее — для новой темы.'
+                : 'Цели, разминка, грамматика, лексика, половинки, фонарик, пропуски, коробка, говорение, итоги, домашка. Длиннее и подробнее — для новой темы.'}
+            {' '}Обе структуры работают и для физики, и для английского — предмет выбирается выше.
+          </span>
         </label>
 
         {template === 'five' && (
@@ -534,13 +552,13 @@ export function App() {
               </ul>
             </details>
           )}
-          {lastLesson?.meta.imageIdeas && lastLesson.meta.imageIdeas.length > 0 && (
+          {activeLesson?.meta.imageIdeas && activeLesson.meta.imageIdeas.length > 0 && (
             <>
               <div className="status-heading">
                 Картинки к оформлению — поищите и перетащите на доску:
               </div>
               <ul>
-                {lastLesson.meta.imageIdeas.map((idea) => (
+                {activeLesson.meta.imageIdeas.map((idea) => (
                   <li key={idea}>{idea}</li>
                 ))}
               </ul>
@@ -562,9 +580,17 @@ export function App() {
         </div>
       )}
 
-      {(saved.length > 0 || lastLesson) && !busy && (
+      {!busy && (
         <section className="step">
           <div className="step-label">Страховка</div>
+
+          {saved.length === 0 && !lastLesson && (
+            <p className="hint">
+              Здесь появится кнопка «Скачать урок файлом». Доска помнит только уроки, нарисованные
+              этой панелью: если ваши уроки старше обновления, нарисуйте любой урок заново — и он
+              встанет в список.
+            </p>
+          )}
 
           {saved.length > 0 && (
             <label>
@@ -580,21 +606,27 @@ export function App() {
             </label>
           )}
 
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={withPictures}
-              onChange={(event) => setWithPictures(event.target.checked)}
-            />
-            <span>
-              с картинками с доски
-              <span className="hint">
-                заберёт всё, что вы положили на урок руками, и вошьёт прямо в файл
+          {(saved.length > 0 || lastLesson) && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={withPictures}
+                onChange={(event) => setWithPictures(event.target.checked)}
+              />
+              <span>
+                с картинками с доски
+                <span className="hint">
+                  заберёт всё, что вы положили на урок руками, и вошьёт прямо в файл
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          )}
 
-          <button type="button" onClick={() => void downloadHtml()}>
+          <button
+            type="button"
+            disabled={saved.length === 0 && !lastLesson}
+            onClick={() => void downloadHtml()}
+          >
             Скачать урок файлом (HTML)
             <span className="hint">
               карточки перетаскиваются, задания проверяют себя сами — работает в любом браузере

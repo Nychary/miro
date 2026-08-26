@@ -14,7 +14,13 @@ describe('секция стиля', () => {
     const prompt = buildPrompt({ ...BASE, style: 'Гарри Поттер' })
     expect(prompt).toContain('Стиль оформления: «Гарри Поттер»')
     expect(prompt).toContain('meta.style')
-    expect(prompt).toContain('meta.styleEmoji')
+    expect(prompt).toContain('meta.imageIdeas')
+  })
+
+  it('не просит эмодзи: оформление добавляет репетитор сам', () => {
+    const prompt = buildPrompt({ ...BASE, style: 'Космос' })
+    expect(prompt).not.toContain('styleEmoji')
+    expect(prompt).not.toContain('эмодзи')
   })
 
   it('не появляется без стиля', () => {

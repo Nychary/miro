@@ -939,7 +939,9 @@ async function renderPullOut(canvas: Canvas, block: PullOutBlock, title: string)
       width: size.pullItem,
       height: size.pullItem,
       shape: 'circle',
-      content: `<span style="font-size:48px">${escapeHtml(block.itemEmoji ?? '🍬')}</span>`,
+      content: block.itemEmoji
+        ? `<span style="font-size:48px">${escapeHtml(block.itemEmoji)}</span>`
+        : bold(String(index + 1)),
       fillColor: color.exampleFill,
       borderColor: color.exampleBorder,
       flow: false,

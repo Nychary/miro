@@ -12,7 +12,6 @@ import {
   color,
   font,
   gap,
-  styleDecor,
 } from './theme'
 
 export interface RenderResult {
@@ -84,12 +83,11 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
       anchors.push({ index, top, bottom: canvas.top })
     }
 
-    // Декорации рассыпаются по всей площади урока и уходят в самый низ
-    // стопки детей фрейма — под карточки. Видны они в просветах между
-    // секциями и по краям, и это ровно эффект тематической подложки.
-    const decorEmoji = lesson.meta.styleEmoji?.length
-      ? lesson.meta.styleEmoji
-      : styleDecor(lesson.meta.style)
+    // Декорации рассыпаются по площади урока и уходят под карточки — видно их
+    // в просветах между секциями. Появляются только если репетитор сам вписал
+    // эмодзи в meta.styleEmoji: оформление — авторская часть работы, и класть
+    // на доску незваные картинки значит делать её за автора.
+    const decorEmoji = lesson.meta.styleEmoji ?? []
     if (decorEmoji.length > 0 && !canvas.isEmpty) {
       progress('Декорации…')
       decorations = await scatterDecor(canvas.bbox(), decorEmoji)

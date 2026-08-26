@@ -193,7 +193,7 @@ function reading(block: ReadingBlock): string {
 
 function audio(block: AudioBlock): string {
   const tasks = block.tasks?.length ? list(block.tasks) : ''
-  return `<div class="card example"><h3>🔊 Track ${esc(block.track)}</h3><p>${esc(block.instruction)}</p></div>${tasks}`
+  return `<div class="card example"><h3>Track ${esc(block.track)}</h3><p>${esc(block.instruction)}</p></div>${tasks}`
 }
 
 function theory(block: TheoryBlock): string {
@@ -361,15 +361,14 @@ ${controls(language)}
 }
 
 function pullOut(block: PullOutBlock): string {
-  const emoji = block.itemEmoji ?? '🍬'
   return `<p class="muted">${esc(block.instruction)}</p>
 <div class="tray">${block.trayLabel ? `<span class="tray-label">${esc(block.trayLabel)}</span>` : ''}
 ${block.questions
     .map(
-      (question) =>
-        `<details class="pull"><summary><span class="pull-item">${esc(emoji)}</span></summary>${esc(
-          question,
-        )}</details>`,
+      (question, index) =>
+        `<details class="pull"><summary><span class="pull-item">${
+          block.itemEmoji ? esc(block.itemEmoji) : index + 1
+        }</span></summary>${esc(question)}</details>`,
     )
     .join('')}</div>`
 }

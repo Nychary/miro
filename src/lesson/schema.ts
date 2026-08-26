@@ -333,7 +333,10 @@ export interface PullOutBlock extends BlockBase<'pullout'> {
   instruction: string
   /** Название подноса: «тарелка с конфетами», «шляпа». */
   trayLabel?: string
-  /** Эмодзи предмета, который тянут: 🍬, 🔑, ⚽. */
+  /**
+   * Символ предмета, который тянут. Пусто — на предметах стоят номера:
+   * оформление остаётся за репетитором, конструктор его не навязывает.
+   */
   itemEmoji?: string
   questions: string[]
 }
