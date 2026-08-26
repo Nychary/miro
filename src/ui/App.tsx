@@ -322,6 +322,7 @@ export function App() {
           frameId,
           snapshot?.anchors ?? [],
           snapshot?.itemIds ?? [],
+          lesson.blocks.filter((block) => block.type !== 'answers').length,
           (message) => setStatus({ kind: 'busy', message }),
         )
       } catch (error) {

@@ -65,6 +65,7 @@ export type Block =
   | MatchingBlock
   | SortingBlock
   | GapFillBlock
+  | ChoiceBlock
   | MysteryBoxBlock
   | HalvesBlock
   | PullOutBlock
@@ -298,6 +299,30 @@ export interface SpeakingBlock extends BlockBase<'speaking'> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Выбор варианта — самое частое упражнение языковых курсов.
+ *
+ * Ученик читает предложение с пропуском и кладёт в него ту карточку, которая
+ * подходит. Отличие от заполнения пропусков в том, что варианты даны к каждому
+ * предложению отдельно и различаются малым: формой глагола, предлогом,
+ * порядком слов. Проверка та же, что у остальных заданий, — «в той ли зоне
+ * лежит карточка», поэтому и на доске, и в файле это работает без оговорок.
+ */
+export interface ChoiceBlock extends BlockBase<'choice'> {
+  ref: string
+  instruction: string
+  items: ChoiceItem[]
+}
+
+export interface ChoiceItem {
+  /** Предложение с пропуском: пропуск обозначается тремя подчёркиваниями. */
+  text: string
+  /** Варианты ответа: обычно два-три, различающиеся мелочью. */
+  options: string[]
+  /** Правильный вариант — он же есть в options. */
+  correct: string
+}
+
+/**
  * Волшебная коробка: карточки лежат внутри нарисованной коробки, ученик
  * достаёт их и собирает фразу по порядку. Момент открытия коробки — половина
  * эффекта, поэтому у неё есть крышка, которую сдвигают в начале задания.
@@ -431,6 +456,7 @@ export const DEFAULT_TITLES: Record<Block['type'], { ru: string; en: string }> =
   matching: { ru: 'Сопоставь пары', en: 'Match the pairs' },
   sorting: { ru: 'Распредели по группам', en: 'Sort into groups' },
   gapfill: { ru: 'Заполни пропуски', en: 'Fill in the gaps' },
+  choice: { ru: 'Выбери верное', en: 'Choose the correct option' },
   mysterybox: { ru: 'Волшебная коробка', en: 'Mystery box' },
   halves: { ru: 'Собери половинки', en: 'Match the halves' },
   pullout: { ru: 'Вытяни вопрос', en: 'Pull out a question' },

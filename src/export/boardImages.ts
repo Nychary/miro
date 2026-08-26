@@ -57,12 +57,18 @@ export async function collectFrameImages(
   frameId: string,
   anchors: BlockAnchor[],
   ownIds: string[] = [],
+  blockCount = 0,
   onProgress?: (message: string) => void,
 ): Promise<CollectResult> {
   const [frame] = (await miro.board.get({ id: [frameId] })) as Frame[]
   if (!frame) return { images: [], notes: [], skipped: 0 }
 
-  const notes = await handwritten(frame, ownIds, anchors)
+  // Урок, нарисованный до появления разметки секций, границ блоков не помнит.
+  // Тогда делим фрейм на равные полосы по числу секций: попадание грубее,
+  // но картинка хотя бы остаётся в своей половине урока, а не уезжает в шапку.
+  const marks = anchors.length > 0 ? anchors : evenAnchors(frame, blockCount)
+
+  const notes = await handwritten(frame, ownIds, marks)
   const pictures = await picturesOver(frame)
   if (pictures.length === 0) return { images: [], notes, skipped: 0 }
 
@@ -86,7 +92,7 @@ export async function collectFrameImages(
     images.push({
       dataUrl,
       alt: picture.title || 'Иллюстрация урока',
-      blockIndex: blockAt(placed.y, anchors),
+      blockIndex: blockAt(placed.y, marks),
       widthRatio: frame.width > 0 ? Math.min(1, picture.width / frame.width) : 0.5,
     })
 
@@ -193,6 +199,19 @@ async function picturesOver(frame: Frame): Promise<Placed[]> {
   }
 
   return placed
+}
+
+/** Равные полосы вместо настоящих границ секций — запасной вариант. */
+function evenAnchors(frame: Frame, blockCount: number): BlockAnchor[] {
+  if (blockCount <= 0) return []
+
+  const top = frame.y - frame.height / 2
+  const step = frame.height / blockCount
+  return Array.from({ length: blockCount }, (_, index) => ({
+    index,
+    top: top + step * index,
+    bottom: top + step * (index + 1),
+  }))
 }
 
 /** К какой секции урока относится картинка — по её вертикали на доске. */

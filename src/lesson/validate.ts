@@ -514,6 +514,31 @@ function validateBlock(input: unknown, path: string, problems: Problems): Block 
       }
     }
 
+    case 'choice': {
+      const items = requireArray(input.items, `${path}.items`, problems).map((item, index) => {
+        const at = `${path}.items[${index}]`
+        if (!isRecord(item)) {
+          problems.error(at, 'ожидался объект')
+          return { text: '', options: [], correct: '' }
+        }
+        const options = requireStringArray(item.options, `${at}.options`, problems)
+        const correct = requireString(item.correct, `${at}.correct`, problems)
+        // Правильный вариант обязан быть среди предложенных, иначе задание
+        // нерешаемо: карточки с таким текстом на доске просто не окажется.
+        if (correct && options.length > 0 && !options.includes(correct)) {
+          problems.error(`${at}.correct`, `«${correct}» нет среди вариантов`)
+        }
+        return { text: requireString(item.text, `${at}.text`, problems), options, correct }
+      })
+      return {
+        type,
+        title,
+        ref: optionalString(input.ref) ?? 'c1',
+        instruction: requireString(input.instruction, `${path}.instruction`, problems),
+        items,
+      }
+    }
+
     case 'mysterybox': {
       const distractors = Array.isArray(input.distractors)
         ? input.distractors.filter((value): value is string => typeof value === 'string')

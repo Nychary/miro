@@ -447,6 +447,8 @@ function estimateBlockHeight(block: Block): number {
       return sectionOverhead + 400 + block.groups.length * 60
     case 'gapfill':
       return sectionOverhead + block.sentences.length * 130 + 300
+    case 'choice':
+      return sectionOverhead + block.items.length * 190
     case 'mysterybox':
       return sectionOverhead + 400 + Math.ceil((block.slots.length + (block.distractors?.length ?? 0)) / 4) * 120
     case 'halves':

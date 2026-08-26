@@ -2,6 +2,7 @@ import type { Shape } from '@mirohq/websdk-types'
 import type {
   AudioBlock,
   Block,
+  ChoiceBlock,
   ExampleBlock,
   FlashlightBlock,
   FormulasBlock,
@@ -71,6 +72,8 @@ export async function renderBlock(canvas: Canvas, block: Block, lesson: Lesson):
       return renderSorting(canvas, block, title)
     case 'gapfill':
       return renderGapFill(canvas, block, title)
+    case 'choice':
+      return renderChoice(canvas, block, title)
     case 'mysterybox':
       return renderMysteryBox(canvas, block, title)
     case 'halves':
@@ -722,6 +725,63 @@ async function renderGapFill(canvas: Canvas, block: GapFillBlock, title: string)
 // фонаря. Механика проверки от этого не меняется — она по-прежнему сверяет
 // текст карточки с текстом зоны, — а урок перестаёт выглядеть как анкета.
 // ---------------------------------------------------------------------------
+
+/**
+ * Выбор варианта.
+ *
+ * Предложение с пропуском, под ним варианты — и пустая зона, куда ученик
+ * кладёт тот, который считает верным. Варианты у каждого пункта свои, поэтому
+ * они лежат рядом со своим предложением, а не общим банком внизу: иначе
+ * пришлось бы глазами искать, какие из двадцати карточек относятся к третьей
+ * строке.
+ */
+async function renderChoice(canvas: Canvas, block: ChoiceBlock, title: string): Promise<void> {
+  await section(canvas, title)
+  await canvas.text(paragraphs(escapeHtml(block.instruction)), { color: color.muted, gapAfter: gap.md })
+
+  const zones: ZoneRecord[] = []
+  const chips: ChipRecord[] = []
+  const textWidth = canvas.width * 0.52
+
+  for (const [index, item] of block.items.entries()) {
+    const top = canvas.top
+    const line = await canvas.text(`${index + 1}. ${escapeHtml(item.text)}`, {
+      width: textWidth,
+      size: font.body,
+      flow: false,
+    })
+
+    const zone = await dropZone(canvas, {
+      left: canvas.left + textWidth + gap.sm,
+      top,
+      width: size.dropZoneWidth,
+      height: size.dropZoneHeight,
+    })
+    await tagItem(zone, { role: 'zone', exercise: block.ref, expected: item.correct })
+    zones.push({ id: zone.id, expected: item.correct })
+
+    // Варианты — под своей строкой, вперемешку.
+    let left = canvas.left
+    const optionsTop = top + Math.max(line.height, size.dropZoneHeight) + gap.xs
+    for (const option of shuffle(item.options)) {
+      const note = await canvas.sticky({
+        left,
+        top: optionsTop,
+        width: size.chipWidth,
+        shape: 'rectangle',
+        content: escapeHtml(option),
+        fillColor: sticky.draggable,
+      })
+      await tagItem(note, { role: 'chip', exercise: block.ref, value: option })
+      chips.push({ id: note.id, value: option, homeX: note.x, homeY: note.y })
+      left += size.chipWidth + gap.sm
+    }
+
+    canvas.top = optionsTop + size.chipHeight + gap.md
+  }
+
+  canvas.exercises.push({ ref: block.ref, title, zones, chips })
+}
 
 /**
  * Волшебная коробка.

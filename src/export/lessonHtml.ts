@@ -11,6 +11,7 @@ import type {
   Lesson,
   MatchingBlock,
   MindmapBlock,
+  ChoiceBlock,
   MysteryBoxBlock,
   PullOutBlock,
   ReadingBlock,
@@ -169,6 +170,8 @@ function renderBlock(block: Block, lesson: Lesson): string {
       return section(title, sorting(block, lesson.meta.language))
     case 'gapfill':
       return section(title, gapfill(block, lesson.meta.language))
+    case 'choice':
+      return section(title, choice(block, lesson.meta.language))
     case 'mysterybox':
       return section(title, mysteryBox(block, lesson.meta.language))
     case 'halves':
@@ -369,6 +372,24 @@ function inkTools(language: 'ru' | 'en'): string {
   <button type="button" class="ink-swatch" data-color="#2f9e63" style="background:#2f9e63"></button>
   <button type="button" class="ink-btn" data-ink="erase">${t.erase}</button>
   <button type="button" class="ink-btn" data-ink="clear">${t.clear}</button>
+</div>`
+}
+
+/** Выбор варианта: у каждой строки свои карточки и своя зона под ответ. */
+function choice(block: ChoiceBlock, language: 'ru' | 'en'): string {
+  const rows = block.items
+    .map(
+      (item) => `<li>
+  <div class="choice-line">${esc(item.text)}<span class="slot" data-answer="${esc(item.correct)}"></span></div>
+  <div class="bank">${shuffle(item.options).map((option) => chip(option)).join('')}</div>
+</li>`,
+    )
+    .join('')
+
+  return `<div class="interactive" data-lang="${language}">
+<p class="muted">${esc(block.instruction)}</p>
+<ol class="choice">${rows}</ol>
+${controls(language)}
 </div>`
 }
 
@@ -667,6 +688,9 @@ details.pull[open] { background: #fff; }
 table.work td, table.work th { font-size: 14px; }
 table.work tr.ok td:last-child { color: #2f9e63; font-weight: 600; }
 table.work tr.bad td:last-child { color: #d64545; font-weight: 600; }
+ol.choice > li { margin-bottom: 16px; }
+.choice-line { margin-bottom: 6px; }
+ol.choice .bank { margin: 0; min-height: 0; }
 .hand { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .hand span { padding: 8px 14px; border: 1px solid #e0c840; border-radius: 10px;
   background: #fffbe8; font-size: 15px; }
@@ -858,8 +882,13 @@ const SCRIPT = `
 
     root.querySelectorAll('.slot').forEach(function (slot) {
       total += 1;
-      var chip = slot.querySelector('.chip');
-      var ok = Boolean(chip) && chip.getAttribute('data-value') === slot.getAttribute('data-answer');
+      // Карточек в клетке может оказаться несколько: перетаскивание вытесняет
+      // прежнюю, но урок могли и распечатать, и открыть в чужом браузере.
+      // Верно — только когда лежит ровно одна и та самая.
+      var inside = slot.querySelectorAll('.chip');
+      var chip = inside[0];
+      var ok =
+        inside.length === 1 && chip.getAttribute('data-value') === slot.getAttribute('data-answer');
       slot.classList.toggle('ok', ok);
       slot.classList.toggle('bad', !ok);
       if (chip) {
