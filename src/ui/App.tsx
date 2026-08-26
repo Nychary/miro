@@ -18,6 +18,13 @@ const DEFAULT_LEVEL: Record<Subject, string> = {
   english: 'B1',
 }
 
+const TRICK_TITLES = {
+  mysterybox: 'волшебная коробка',
+  halves: 'половинки',
+  pullout: 'тянучка с вопросами',
+  flashlight: 'фонарик',
+} as const
+
 type Status =
   | { kind: 'idle' }
   | { kind: 'busy'; message: string }
@@ -52,6 +59,8 @@ export function App() {
 
   const [answersOnBoard, setAnswersOnBoard] = useState(false)
   const [lastLesson, setLastLesson] = useState<Lesson | null>(null)
+  /** Фрейм последнего урока этой сессии: по нему берём картинки, если снимок не сохранился. */
+  const [lastFrameId, setLastFrameId] = useState('')
 
   // Уроки, которые помнит сама доска. Панель — обычная страница внутри Miro:
   // любое обновление вкладки стирает её состояние, и без этого списка скачать
@@ -165,13 +174,26 @@ export function App() {
           setStatus({ kind: 'busy', message: `Рисую урок «${lesson.meta.topic}»… ${progress}` }),
       })
       setLastLesson(lesson)
-      if (result.frame) setChosenFrame(result.frame.id)
+      if (result.frame) {
+        setChosenFrame(result.frame.id)
+        setLastFrameId(result.frame.id)
+      }
       void refreshSaved()
+      // Приёмы — то, ради чего урок и делается непохожим на анкету. Если их
+      // в ответе нейросети не оказалось, репетитор должен узнать это сразу,
+      // а не искать коробку глазами на готовой доске.
+      const tricks = lesson.blocks
+        .filter((block) => TRICK_TITLES[block.type as keyof typeof TRICK_TITLES])
+        .map((block) => TRICK_TITLES[block.type as keyof typeof TRICK_TITLES])
+      const trickNote = tricks.length
+        ? `Приёмы в уроке: ${[...new Set(tricks)].join(', ')}.`
+        : 'Приёмов в этом уроке нет: нейросеть не вернула ни коробку, ни половинки, ни тянучку, ни фонарик. Попросите её добавить их — промпт эти блоки запрашивает.'
+
       setStatus({
         kind: 'done',
         message: `Готово: ${result.itemCount} объектов${
           result.answersFrame ? ', ответы в отдельном фрейме справа' : ', ответы — ниже в панели'
-        }.`,
+        }. ${trickNote}`,
         warnings: [...warnings, ...result.warnings],
       })
     } catch (error) {
@@ -271,14 +293,21 @@ export function App() {
     // сохранением: репетитор украшает урок уже после отрисовки, и в файл
     // должно попасть то, что на доске сейчас, а не то, что было при генерации.
     let images: Awaited<ReturnType<typeof collectFrameImages>> = { images: [], skipped: 0 }
-    if (withPictures && snapshot) {
+    let imageError: string | null = null
+
+    // Фрейм нужен только для картинок, и он известен даже без снимка: урок,
+    // нарисованный в этой сессии, помнит свой фрейм. Раньше картинки собирались
+    // исключительно по снимку — а если снимок не сохранился, файл молча уходил
+    // без оформления, и понять почему было невозможно.
+    const frameId = snapshot?.frameId ?? lastFrameId
+    if (withPictures && frameId) {
       setStatus({ kind: 'busy', message: 'Собираю картинки с доски…' })
       try {
-        images = await collectFrameImages(snapshot.frameId, snapshot.anchors, (message) =>
+        images = await collectFrameImages(frameId, snapshot?.anchors ?? [], (message) =>
           setStatus({ kind: 'busy', message }),
         )
-      } catch {
-        images = { images: [], skipped: 0 }
+      } catch (error) {
+        imageError = error instanceof Error ? error.message : 'неизвестная ошибка Miro'
       }
     }
 
@@ -294,14 +323,27 @@ export function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 5000)
 
     const size = Math.round(html.length / 1024)
+    const warnings: string[] = []
+    if (imageError) {
+      warnings.push(`Картинки с доски забрать не удалось (${imageError}).`)
+    } else if (images.skipped) {
+      warnings.push(
+        `Картинок найдено, но не удалось забрать: ${images.skipped}. Скорее всего, Miro не отдаёт их файлы из панели — покажите мне это сообщение, найдём другой путь.`,
+      )
+    } else if (withPictures && !frameId) {
+      warnings.push(
+        'Картинки не искали: неизвестно, в каком фрейме урок. Нарисуйте урок заново — тогда доска запомнит его вместе с фреймом.',
+      )
+    } else if (withPictures && images.images.length === 0) {
+      warnings.push(
+        'Картинок на уроке не нашлось. Они должны лежать внутри рамки урока — если картинка легла рядом с фреймом, перетащите её внутрь.',
+      )
+    }
+
     setStatus({
       kind: 'done',
       message: `Файл сохранён: ${images.images.length} картинок с доски, ${size} КБ.`,
-      warnings: images.skipped
-        ? [
-            `Картинок не удалось забрать: ${images.skipped}. Обычно это значит, что Miro не отдаёт их из панели — скажите мне, и мы найдём другой путь.`,
-          ]
-        : [],
+      warnings,
     })
   }
 

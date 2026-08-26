@@ -45,8 +45,7 @@ export async function collectFrameImages(
   const [frame] = (await miro.board.get({ id: [frameId] })) as Frame[]
   if (!frame) return { images: [], skipped: 0 }
 
-  const children = await frame.getChildren()
-  const pictures = children.filter((child): child is Image => child.type === 'image')
+  const pictures = await picturesOver(frame)
   if (pictures.length === 0) return { images: [], skipped: 0 }
 
   // Сверху вниз — в том же порядке, в каком идут секции в файле.
@@ -79,6 +78,44 @@ export async function collectFrameImages(
   }
 
   return { images, skipped }
+}
+
+/**
+ * Картинки, лежащие на уроке.
+ *
+ * Дети фрейма — только половина ответа. Картинку, брошенную поверх готового
+ * урока, Miro присоединяет к фрейму не всегда: если она легла на карточку, а
+ * не на свободное место фрейма, она остаётся самостоятельным объектом доски и
+ * в `getChildren` не попадает. Для человека она при этом часть урока — он её
+ * туда и клал. Поэтому вторым заходом берём все картинки доски и оставляем те,
+ * что попадают в прямоугольник фрейма.
+ */
+async function picturesOver(frame: Frame): Promise<Image[]> {
+  const found = new Map<string, Image>()
+
+  for (const child of await frame.getChildren()) {
+    if (child.type === 'image') found.set(child.id, child as Image)
+  }
+
+  try {
+    const all = (await miro.board.get({ type: ['image'] })) as Image[]
+    const left = frame.x - frame.width / 2
+    const right = frame.x + frame.width / 2
+    const top = frame.y - frame.height / 2
+    const bottom = frame.y + frame.height / 2
+
+    for (const picture of all) {
+      if (found.has(picture.id)) continue
+      // Центр картинки внутри фрейма — значит, она лежит на этом уроке.
+      if (picture.x >= left && picture.x <= right && picture.y >= top && picture.y <= bottom) {
+        found.set(picture.id, picture)
+      }
+    }
+  } catch {
+    // Доска не отдала список — довольствуемся детьми фрейма.
+  }
+
+  return [...found.values()]
 }
 
 /** К какой секции урока относится картинка — по её вертикали на доске. */

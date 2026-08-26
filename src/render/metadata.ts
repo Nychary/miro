@@ -198,13 +198,30 @@ export interface LessonSnapshot {
   savedAt: string
 }
 
+/**
+ * Значение, пригодное для хранилища доски.
+ *
+ * Разбор ответа нейросети оставляет в уроке поля со значением `undefined` —
+ * необязательный `title` блока, необязательный `hint` задачи. JSON такие поля
+ * молча выбрасывает, а Miro сверяет объект по схеме до сериализации и отвечает
+ * «Invalid type. Expected: null | string | number | boolean | array | object,
+ * received undefined». Урок при этом уже на доске, а снимок не сохраняется —
+ * и скачать файлом его потом нечем. Прогон через JSON убирает такие поля.
+ */
+function plain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 export async function saveLessonSnapshot(snapshot: LessonSnapshot): Promise<void> {
   const index = await readSnapshotIndex()
   const updated = [...index.filter((id) => id !== snapshot.frameId), snapshot.frameId]
   const evicted = updated.slice(0, Math.max(0, updated.length - HISTORY_LIMIT))
   const kept = updated.slice(-HISTORY_LIMIT)
 
-  await miro.board.setAppData(SNAPSHOT_KEY_PREFIX + snapshot.frameId, snapshot as unknown as MetadataValue)
+  await miro.board.setAppData(
+    SNAPSHOT_KEY_PREFIX + snapshot.frameId,
+    plain(snapshot) as unknown as MetadataValue,
+  )
   await miro.board.setAppData(SNAPSHOT_INDEX_KEY, kept as unknown as MetadataValue)
   for (const id of evicted) {
     await miro.board.setAppData(SNAPSHOT_KEY_PREFIX + id, null)
