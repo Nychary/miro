@@ -364,8 +364,14 @@ function inkTools(language: 'ru' | 'en'): string {
       ? { draw: 'Draw', erase: 'Erase', clear: 'Clear', hint: 'Draw over the lesson' }
       : { draw: 'Рисовать', erase: 'Ластик', clear: 'Стереть всё', hint: 'Рисовать поверх урока' }
 
+  const save = language === 'en' ? 'Save my work' : 'Сохранить работу'
+  const load = language === 'en' ? 'Open work' : 'Открыть работу'
+
   return `<canvas id="ink"></canvas>
 <div class="ink-tools" title="${t.hint}">
+  <button type="button" class="ink-btn" data-work="save" title="${save}">${save}</button>
+  <label class="ink-btn" title="${load}">${load}<input type="file" id="work-file" accept="application/json" hidden></label>
+  <span class="ink-sep"></span>
   <button type="button" class="ink-btn" data-ink="draw">${t.draw}</button>
   <button type="button" class="ink-swatch" data-color="#d64545" style="background:#d64545"></button>
   <button type="button" class="ink-swatch" data-color="#2f6fed" style="background:#2f6fed"></button>
@@ -682,6 +688,8 @@ details.pull[open] { background: #fff; }
 .ink-swatch { width: 26px; height: 26px; border: 2px solid #fff; border-radius: 50%;
   box-shadow: 0 0 0 1px #c3cad8; cursor: pointer; padding: 0; }
 .ink-swatch.active { box-shadow: 0 0 0 2px #12151a; }
+.ink-sep { width: 1px; height: 22px; background: #d7dbe4; }
+.ink-btn input { display: none; }
 .student-work { margin-top: 28px; padding: 16px 18px; border: 2px solid #cfd6e4; border-radius: 12px;
   background: #f8fafc; break-inside: avoid; }
 .student-work h2 { margin-top: 0; border-top: none; }
@@ -781,6 +789,86 @@ const SCRIPT = `
     chip.style.left = (e.clientX - dragging.dx) + 'px';
     chip.style.top = (e.clientY - dragging.dy) + 'px';
   }
+
+  // Обмен работой без сервера: ученик сохраняет свои ответы и рисунок в
+  // маленький файл и присылает его. Совместного редактирования это не даёт,
+  // но отвечает на главный вопрос — что именно он сделал.
+  (function () {
+    var tools = document.querySelector('.ink-tools');
+    if (!tools) return;
+    var canvas = document.getElementById('ink');
+
+    function collect() {
+      var slots = [];
+      document.querySelectorAll('.slot, .zone').forEach(function (slot, index) {
+        var inside = [].map.call(slot.querySelectorAll('.chip'), function (c) {
+          return c.getAttribute('data-value');
+        });
+        if (inside.length) slots.push({ i: index, chips: inside });
+      });
+      return {
+        lesson: document.title,
+        savedAt: new Date().toISOString(),
+        slots: slots,
+        ink: canvas && canvas.width ? canvas.toDataURL('image/png') : '',
+      };
+    }
+
+    function restore(state) {
+      // Сначала всё обратно в свои банки, иначе карточки задвоятся.
+      document.querySelectorAll('.interactive').forEach(function (root) {
+        var bank = root.querySelector('.bank');
+        if (bank) root.querySelectorAll('.chip').forEach(function (c) { bank.appendChild(c); });
+      });
+
+      var slots = document.querySelectorAll('.slot, .zone');
+      (state.slots || []).forEach(function (record) {
+        var slot = slots[record.i];
+        if (!slot) return;
+        var root = slot.closest('.interactive') || document;
+        record.chips.forEach(function (value) {
+          var chip = [].slice.call(root.querySelectorAll('.chip')).find(function (c) {
+            return c.getAttribute('data-value') === value && !c.closest('.slot') && !c.closest('.zone');
+          });
+          if (chip) slot.appendChild(chip);
+        });
+      });
+
+      if (state.ink && canvas) {
+        var img = new Image();
+        img.onload = function () { canvas.getContext('2d').drawImage(img, 0, 0); };
+        img.src = state.ink;
+      }
+    }
+
+    tools.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-work="save"]');
+      if (!btn) return;
+      var blob = new Blob([JSON.stringify(collect())], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'работа-' + document.title.replace(/[^\wа-яё]+/gi, '-').toLowerCase() + '.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    });
+
+    var input = document.getElementById('work-file');
+    if (input) {
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          try { restore(JSON.parse(String(reader.result))); } catch (err) {}
+        };
+        reader.readAsText(file);
+        input.value = '';
+      });
+    }
+  })();
 
   // Рисование поверх урока. Холст растянут на всю страницу и по умолчанию
   // прозрачен для мыши — иначе он перехватывал бы перетаскивание карточек.
