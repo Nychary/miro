@@ -1,4 +1,5 @@
 import type { Frame, Image } from '@mirohq/websdk-types'
+import { absoluteCenter, loadParents, type Positioned } from '../render/geometry'
 import type { BlockAnchor } from '../render/metadata'
 
 /**
@@ -99,40 +100,41 @@ export async function collectFrameImages(
  * что попадают в прямоугольник фрейма.
  */
 async function picturesOver(frame: Frame): Promise<Placed[]> {
-  const found = new Map<string, Placed>()
+  const candidates = new Map<string, Image>()
 
-  // Координаты ребёнка фрейма отсчитываются от центра фрейма, а не от доски:
-  // без пересчёта картинка «уезжала» на пол-урока вверх и попадала не в свою
-  // секцию, а у фрейма высотой в несколько тысяч пикселей — вообще в шапку.
   for (const child of await frame.getChildren()) {
-    if (child.type !== 'image') continue
-    const picture = child as Image
-    found.set(picture.id, { picture, x: frame.x + picture.x, y: frame.y + picture.y })
+    if (child.type === 'image') candidates.set(child.id, child as Image)
   }
 
   try {
-    const all = (await miro.board.get({ type: ['image'] })) as Image[]
-    const left = frame.x - frame.width / 2
-    const right = frame.x + frame.width / 2
-    const top = frame.y - frame.height / 2
-    const bottom = frame.y + frame.height / 2
-
-    for (const picture of all) {
-      if (found.has(picture.id)) continue
-      // Чужой фрейм — чужой урок; сюда такая картинка не относится.
+    // Картинку, брошенную поверх карточки, Miro к фрейму не присоединяет —
+    // для человека она при этом часть урока. Берём все картинки доски и ниже
+    // оставляем те, что лежат в границах фрейма.
+    for (const picture of (await miro.board.get({ type: ['image'] })) as Image[]) {
       if (picture.parentId && picture.parentId !== frame.id) continue
-
-      const x = picture.parentId === frame.id ? frame.x + picture.x : picture.x
-      const y = picture.parentId === frame.id ? frame.y + picture.y : picture.y
-      if (x >= left && x <= right && y >= top && y <= bottom) {
-        found.set(picture.id, { picture, x, y })
-      }
+      candidates.set(picture.id, picture)
     }
   } catch {
     // Доска не отдала список — довольствуемся детьми фрейма.
   }
 
-  return [...found.values()]
+  const items = [...candidates.values()] as unknown as Positioned[]
+  const parents = await loadParents([...items, frame as unknown as Positioned])
+  parents.set(frame.id, frame as unknown as Positioned)
+
+  const left = frame.x - frame.width / 2
+  const right = frame.x + frame.width / 2
+  const top = frame.y - frame.height / 2
+  const bottom = frame.y + frame.height / 2
+
+  const placed: Placed[] = []
+  for (const picture of candidates.values()) {
+    const center = absoluteCenter(picture as unknown as Positioned, parents)
+    if (center.x < left || center.x > right || center.y < top || center.y > bottom) continue
+    placed.push({ picture, x: center.x, y: center.y })
+  }
+
+  return placed
 }
 
 /** К какой секции урока относится картинка — по её вертикали на доске. */

@@ -193,4 +193,31 @@ describe('устойчивость', () => {
     expect(html).not.toMatch(/src="http/)
     expect(html).not.toMatch(/href="http/)
   })
+
+  it('работа ученика попадает в файл отдельной секцией', () => {
+    const lesson: Lesson = {
+      meta: { subject: 'english', topic: 'Тема', level: 'A2', durationMin: 60, language: 'ru' },
+      blocks: [{ type: 'objectives', items: ['Цель'] }],
+    }
+
+    const html = lessonToHtml(lesson, {
+      work: {
+        answers: [
+          { exercise: 'm1', expected: 'closes at eight', given: 'closes at eight', correct: true },
+          { exercise: 'm1', expected: 'eats chocolate', given: 'wakes up at five', correct: false },
+          // Незаполненная зона в отчёт не идёт: пустая строка ученику ничего не говорит.
+          { exercise: 'm1', expected: 'buy cakes', given: '', correct: false },
+        ],
+        notes: [{ text: 'не понял третье задание', y: 100 }],
+        drawings: 2,
+      },
+    })
+
+    expect(html).toContain('Как прошло занятие')
+    expect(html).toContain('Верно 1 из 2')
+    expect(html).toContain('не понял третье задание')
+    // Про рисунки говорим прямо: Miro их не отдаёт.
+    expect(html).toContain('рисунков от руки: 2')
+    expect(html).not.toContain('buy cakes')
+  })
 })

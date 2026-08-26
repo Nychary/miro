@@ -23,6 +23,7 @@ import type {
 import { GAP_MARKER, REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/schema'
 import { shuffle } from '../render/composition'
 import type { LessonImage } from './boardImages'
+import type { BoardWork } from './boardWork'
 
 /**
  * Рендер урока в самодостаточный HTML-файл.
@@ -50,11 +51,17 @@ export interface ExportOptions {
    * делает человек, и в файле оно должно стоять там же, где стояло на доске.
    */
   images?: LessonImage[]
+  /**
+   * Работа ученика: что он разложил по клеткам и что написал на полях.
+   * С ней файл перестаёт быть пустым бланком и становится памятью о занятии.
+   */
+  work?: BoardWork
 }
 
 export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): string {
   const { meta } = lesson
   const images = options.images ?? []
+  const work = options.work
 
   const details = [
     meta.subject === 'physics' ? 'Физика' : 'Английский',
@@ -93,6 +100,7 @@ export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): strin
 </header>
 ${cover}
 ${body}
+${work ? renderWork(work) : ''}
 ${answers ? renderAnswers(answers, lesson) : ''}
 ${inkTools(language)}
 <script>${SCRIPT}</script>
@@ -399,6 +407,45 @@ ${block.hunt ? `<p><strong>${esc(block.hunt)}</strong></p>` : ''}
 <p class="small muted">Наведи фонарик на слова — они проявятся. На печати слова видны сразу.</p>`
 }
 
+/**
+ * Как ученик прошёл урок.
+ *
+ * Раскладывать его карточки по исходным клеткам в файле мы не беремся —
+ * задание в файле живое, и подставленные ответы отняли бы у него смысл.
+ * Зато рядом остаётся честная запись занятия: что он ответил, где ошибся
+ * и что дописал от себя.
+ */
+function renderWork(work: BoardWork): string {
+  if (work.answers.length === 0 && work.notes.length === 0 && work.drawings === 0) return ''
+
+  const filled = work.answers.filter((answer) => answer.given)
+  const right = filled.filter((answer) => answer.correct).length
+
+  const rows = filled
+    .map(
+      (answer) =>
+        `<tr class="${answer.correct ? 'ok' : 'bad'}"><td>${esc(answer.expected)}</td><td>${esc(
+          answer.given,
+        )}</td><td>${answer.correct ? 'верно' : 'не сюда'}</td></tr>`,
+    )
+    .join('')
+
+  const table = filled.length
+    ? `<p class="muted">Верно ${right} из ${filled.length}.</p>
+<table class="work"><tr><th>Ждали здесь</th><th>Ученик положил</th><th></th></tr>${rows}</table>`
+    : ''
+
+  const notes = work.notes.length
+    ? `<h4>Заметки с доски</h4>${list(work.notes.map((note) => note.text))}`
+    : ''
+
+  const drawings = work.drawings
+    ? `<p class="small muted">На доске осталось рисунков от руки: ${work.drawings}. Их содержимое Miro в файл не отдаёт — сохраните доску картинкой, если рисунки важны.</p>`
+    : ''
+
+  return `<section class="student-work"><h2>Как прошло занятие</h2>${table}${notes}${drawings}</section>`
+}
+
 function renderAnswers(block: AnswersBlock, lesson: Lesson): string {
   const imageIdeas = lesson.meta.imageIdeas?.length
     ? `<p class="muted">Картинки к оформлению: ${lesson.meta.imageIdeas.map(esc).join(' · ')}</p>`
@@ -577,6 +624,12 @@ details.pull[open] { background: #fff; }
 .ink-swatch { width: 26px; height: 26px; border: 2px solid #fff; border-radius: 50%;
   box-shadow: 0 0 0 1px #c3cad8; cursor: pointer; padding: 0; }
 .ink-swatch.active { box-shadow: 0 0 0 2px #12151a; }
+.student-work { margin-top: 28px; padding: 16px 18px; border: 2px solid #cfd6e4; border-radius: 12px;
+  background: #f8fafc; break-inside: avoid; }
+.student-work h2 { margin-top: 0; border-top: none; }
+table.work td, table.work th { font-size: 14px; }
+table.work tr.ok td:last-child { color: #2f9e63; font-weight: 600; }
+table.work tr.bad td:last-child { color: #d64545; font-weight: 600; }
 .pictures { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin: 10px 0; }
 .pictures img { max-width: 100%; height: auto; border-radius: 8px; break-inside: avoid; }
 .hints { margin-top: 8px; }

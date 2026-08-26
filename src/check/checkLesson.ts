@@ -1,4 +1,5 @@
 import type { Frame, Shape } from '@mirohq/websdk-types'
+import { absoluteCenter, loadParents, type Positioned } from '../render/geometry'
 import { loadExercises, type LessonExercises, type ZoneRecord } from '../render/metadata'
 import { applyStyle, color } from '../render/theme'
 
@@ -41,18 +42,6 @@ export interface Evaluation {
   zones: Map<string, Shape>
 }
 
-/** Минимум, который нужен от объекта для геометрии. */
-interface Positioned {
-  id: string
-  type: string
-  x: number
-  y: number
-  width: number
-  height: number
-  parentId: string | null
-  relativeTo: string
-}
-
 /** Разовая проверка: оценить и покрасить всё. */
 export async function checkLesson(frame: Frame): Promise<CheckResult> {
   const evaluation = await evaluateLesson(frame)
@@ -82,9 +71,7 @@ export async function evaluateLesson(frame: Frame, cached?: LessonExercises): Pr
   // Координаты детей фрейма считаются от него, а карточку могли вытащить
   // наружу — поэтому всё приводим к координатам доски, а для этого нужны
   // сами фреймы.
-  const parentIds = [...new Set(items.map((item) => item.parentId).filter((id): id is string => Boolean(id)))]
-  const parents = parentIds.length > 0 ? ((await miro.board.get({ id: parentIds })) as unknown as Positioned[]) : []
-  const parentById = new Map(parents.map((parent) => [parent.id, parent]))
+  const parentById = await loadParents(items)
 
   const results: ExerciseResult[] = []
   const zoneStates = new Map<string, ZoneState>()
@@ -227,18 +214,6 @@ function findHostZone(
  * сравнивать напрямую положение карточки и зоны нельзя: карточку могли
  * вытащить за пределы фрейма, и тогда она уже в координатах доски.
  */
-function absoluteCenter(item: Positioned, parents: Map<string, Positioned>): { x: number; y: number } {
-  const parent = item.parentId ? parents.get(item.parentId) : undefined
-  if (!parent) return { x: item.x, y: item.y }
-
-  if (item.relativeTo === 'parent_top_left') {
-    return { x: parent.x - parent.width / 2 + item.x, y: parent.y - parent.height / 2 + item.y }
-  }
-  if (item.relativeTo === 'parent_center') {
-    return { x: parent.x + item.x, y: parent.y + item.y }
-  }
-  return { x: item.x, y: item.y }
-}
 
 function normalize(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru-RU')

@@ -9,6 +9,7 @@ import { SAMPLES } from '../lesson/samples'
 import { titleFor, type Lesson, type Subject } from '../lesson/schema'
 import { parseLessonResponse } from '../lesson/validate'
 import { collectFrameImages } from '../export/boardImages'
+import { collectBoardWork, type BoardWork } from '../export/boardWork'
 import { listLessonSnapshots, type LessonSnapshot } from '../render/metadata'
 import { renderLesson } from '../render/renderLesson'
 import { STYLE_SUGGESTIONS } from '../render/theme'
@@ -68,6 +69,7 @@ export function App() {
   const [saved, setSaved] = useState<LessonSnapshot[]>([])
   const [chosenFrame, setChosenFrame] = useState('')
   const [withPictures, setWithPictures] = useState(true)
+  const [withWork, setWithWork] = useState(false)
 
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const promptSectionRef = useRef<HTMLElement>(null)
@@ -294,6 +296,7 @@ export function App() {
     // должно попасть то, что на доске сейчас, а не то, что было при генерации.
     let images: Awaited<ReturnType<typeof collectFrameImages>> = { images: [], skipped: 0 }
     let imageError: string | null = null
+    let warningsFromWork: string | null = null
 
     // Фрейм нужен только для картинок, и он известен даже без снимка: урок,
     // нарисованный в этой сессии, помнит свой фрейм. Раньше картинки собирались
@@ -311,7 +314,19 @@ export function App() {
       }
     }
 
-    const html = lessonToHtml(lesson, { images: images.images })
+    // Ответы ученика и его заметки: то, ради чего файл становится памятью
+    // о занятии, а не бланком. Берутся с доски в момент сохранения.
+    let work: BoardWork | undefined
+    if (withWork && frameId) {
+      setStatus({ kind: 'busy', message: 'Собираю работу ученика…' })
+      try {
+        work = await collectBoardWork(frameId, snapshot?.savedAt ?? new Date(0).toISOString())
+      } catch (error) {
+        warningsFromWork = error instanceof Error ? error.message : 'неизвестная ошибка Miro'
+      }
+    }
+
+    const html = lessonToHtml(lesson, { images: images.images, ...(work ? { work } : {}) })
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -324,6 +339,14 @@ export function App() {
 
     const size = Math.round(html.length / 1024)
     const warnings: string[] = []
+    if (warningsFromWork) {
+      warnings.push(`Работу ученика собрать не удалось (${warningsFromWork}).`)
+    }
+    if (work?.drawings) {
+      warnings.push(
+        `На доске ${work.drawings} рисунков от руки — их содержимое Miro в файл не отдаёт. Если рисунки важны, сохраните доску картинкой: меню фрейма, «Export image».`,
+      )
+    }
     if (imageError) {
       warnings.push(`Картинки с доски забрать не удалось (${imageError}).`)
     } else if (images.skipped) {
@@ -649,19 +672,34 @@ export function App() {
           )}
 
           {(saved.length > 0 || lastLesson) && (
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={withPictures}
-                onChange={(event) => setWithPictures(event.target.checked)}
-              />
-              <span>
-                с картинками с доски
-                <span className="hint">
-                  заберёт всё, что вы положили на урок руками, и вошьёт прямо в файл
+            <>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={withPictures}
+                  onChange={(event) => setWithPictures(event.target.checked)}
+                />
+                <span>
+                  с картинками с доски
+                  <span className="hint">
+                    заберёт всё, что вы положили на урок руками, и вошьёт прямо в файл
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={withWork}
+                  onChange={(event) => setWithWork(event.target.checked)}
+                />
+                <span>
+                  с работой ученика
+                  <span className="hint">
+                    что он разложил по клеткам и что написал на доске — урок на память
+                  </span>
+                </span>
+              </label>
+            </>
           )}
 
           <button
