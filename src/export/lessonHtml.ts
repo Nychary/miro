@@ -44,16 +44,6 @@ import type { LessonImage } from './boardImages'
  * перед тем, как отдать распечатку ученику.
  */
 
-/** Типы блоков, которым нужен перетаскиватель карточек. */
-const INTERACTIVE_TYPES = new Set<Block['type']>([
-  'matching',
-  'sorting',
-  'gapfill',
-  'mysterybox',
-  'halves',
-  'flashlight',
-])
-
 export interface ExportOptions {
   /**
    * Картинки, снятые с доски. Раскладываются по секциям: оформление урока
@@ -85,7 +75,7 @@ export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): strin
   // под заголовком, как и на доске.
   const cover = gallery(images, -1)
 
-  const hasInteractive = lesson.blocks.some((block) => INTERACTIVE_TYPES.has(block.type))
+  const language = meta.language
 
   return `<!doctype html>
 <html lang="ru">
@@ -104,7 +94,8 @@ export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): strin
 ${cover}
 ${body}
 ${answers ? renderAnswers(answers, lesson) : ''}
-${hasInteractive ? `<script>${SCRIPT}</script>` : ''}
+${inkTools(language)}
+<script>${SCRIPT}</script>
 </body>
 </html>`
 }
@@ -330,6 +321,32 @@ ${controls(language)}
  * фонарик — тёмным полем, по которому водят светлым пятном. Перетаскивание
  * и проверка у первых двух работают тем же кодом, что и у обычных заданий.
  */
+/**
+ * Слой для рисования поверх урока.
+ *
+ * Файл — не общая доска: одновременно работать в нём вдвоём нельзя. Но урок
+ * часто идёт с демонстрацией экрана, а домашку ученик делает один, и в обоих
+ * случаях нужно то же, что и на доске: подчеркнуть, дописать, соединить
+ * стрелкой. Холст лежит поверх страницы и включается кнопкой, чтобы не мешать
+ * перетаскивать карточки.
+ */
+function inkTools(language: 'ru' | 'en'): string {
+  const t =
+    language === 'en'
+      ? { draw: 'Draw', erase: 'Erase', clear: 'Clear', hint: 'Draw over the lesson' }
+      : { draw: 'Рисовать', erase: 'Ластик', clear: 'Стереть всё', hint: 'Рисовать поверх урока' }
+
+  return `<canvas id="ink"></canvas>
+<div class="ink-tools" title="${t.hint}">
+  <button type="button" class="ink-btn" data-ink="draw">${t.draw}</button>
+  <button type="button" class="ink-swatch" data-color="#d64545" style="background:#d64545"></button>
+  <button type="button" class="ink-swatch" data-color="#2f6fed" style="background:#2f6fed"></button>
+  <button type="button" class="ink-swatch" data-color="#2f9e63" style="background:#2f9e63"></button>
+  <button type="button" class="ink-btn" data-ink="erase">${t.erase}</button>
+  <button type="button" class="ink-btn" data-ink="clear">${t.clear}</button>
+</div>`
+}
+
 function mysteryBox(block: MysteryBoxBlock, language: 'ru' | 'en'): string {
   const words = shuffle([...block.slots, ...(block.distractors ?? [])])
   return `<div class="interactive" data-lang="${language}">
@@ -549,6 +566,17 @@ details.pull[open] { background: #fff; }
   border-radius: 50%; background: radial-gradient(circle, #ffe9a8 0%, #ffe9a8 55%, transparent 72%);
   pointer-events: none; transition: opacity .2s; opacity: 0; }
 .dark:hover .lamp { opacity: 1; }
+#ink { position: absolute; left: 0; top: 0; z-index: 40; pointer-events: none; }
+#ink.on { pointer-events: auto; cursor: crosshair; }
+.ink-tools { position: fixed; right: 16px; bottom: 16px; z-index: 50; display: flex; gap: 6px;
+  align-items: center; padding: 8px 10px; border: 1px solid #d7dbe4; border-radius: 12px;
+  background: rgba(255,255,255,.94); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+.ink-btn { padding: 6px 12px; border: 1px solid #c3cad8; border-radius: 8px; background: #fff;
+  font: inherit; font-size: 13px; cursor: pointer; }
+.ink-btn.active { background: #4262ff; border-color: #4262ff; color: #fff; }
+.ink-swatch { width: 26px; height: 26px; border: 2px solid #fff; border-radius: 50%;
+  box-shadow: 0 0 0 1px #c3cad8; cursor: pointer; padding: 0; }
+.ink-swatch.active { box-shadow: 0 0 0 2px #12151a; }
 .pictures { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin: 10px 0; }
 .pictures img { max-width: 100%; height: auto; border-radius: 8px; break-inside: avoid; }
 .hints { margin-top: 8px; }
@@ -558,7 +586,7 @@ details.pull[open] { background: #fff; }
 @media print {
   body { padding: 0; font-size: 12px; }
   .card { border-radius: 4px; }
-  .controls, .lamp { display: none; }
+  .controls, .lamp, .ink-tools { display: none; }
   /* На бумаге прятать нечего: слова становятся видимыми, вопросы — раскрытыми. */
   .dark { background: #f2f3f6; border: 1px solid #c8cede; }
   .hidden-word { color: #12151a; }
@@ -636,6 +664,84 @@ const SCRIPT = `
     chip.style.left = (e.clientX - dragging.dx) + 'px';
     chip.style.top = (e.clientY - dragging.dy) + 'px';
   }
+
+  // Рисование поверх урока. Холст растянут на всю страницу и по умолчанию
+  // прозрачен для мыши — иначе он перехватывал бы перетаскивание карточек.
+  (function () {
+    var canvas = document.getElementById('ink');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var tools = document.querySelector('.ink-tools');
+    var drawing = false;
+    var mode = 'off';
+    var color = '#d64545';
+
+    function fit() {
+      // Пересоздание холста стирает рисунок, поэтому переносим его копией.
+      var copy = document.createElement('canvas');
+      copy.width = canvas.width;
+      copy.height = canvas.height;
+      if (canvas.width && canvas.height) copy.getContext('2d').drawImage(canvas, 0, 0);
+      canvas.width = document.documentElement.scrollWidth;
+      canvas.height = document.documentElement.scrollHeight;
+      canvas.style.width = canvas.width + 'px';
+      canvas.style.height = canvas.height + 'px';
+      if (copy.width && copy.height) ctx.drawImage(copy, 0, 0);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+    fit();
+    window.addEventListener('resize', fit);
+
+    function setMode(next) {
+      mode = mode === next ? 'off' : next;
+      canvas.classList.toggle('on', mode !== 'off');
+      tools.querySelectorAll('.ink-btn').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-ink') === mode);
+      });
+    }
+
+    tools.addEventListener('click', function (e) {
+      var btn = e.target.closest('button');
+      if (!btn) return;
+      var action = btn.getAttribute('data-ink');
+      if (action === 'clear') {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+      if (action) { setMode(action); return; }
+      color = btn.getAttribute('data-color');
+      tools.querySelectorAll('.ink-swatch').forEach(function (s) { s.classList.remove('active'); });
+      btn.classList.add('active');
+      if (mode !== 'draw') setMode('draw');
+    });
+
+    function point(e) {
+      var box = canvas.getBoundingClientRect();
+      return { x: e.clientX - box.left, y: e.clientY - box.top };
+    }
+
+    canvas.addEventListener('pointerdown', function (e) {
+      if (mode === 'off') return;
+      drawing = true;
+      canvas.setPointerCapture(e.pointerId);
+      var p = point(e);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+    });
+    canvas.addEventListener('pointermove', function (e) {
+      if (!drawing) return;
+      var p = point(e);
+      ctx.globalCompositeOperation = mode === 'erase' ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = mode === 'erase' ? 24 : 3;
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (name) {
+      canvas.addEventListener(name, function () { drawing = false; });
+    });
+  })();
 
   // Фонарик: пятно света едет за курсором и пальцем, слова проступают в нём.
   document.querySelectorAll('.dark').forEach(function (field) {

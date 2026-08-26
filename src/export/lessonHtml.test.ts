@@ -169,14 +169,19 @@ describe('устойчивость', () => {
     expect(html).not.toContain('class="answers"')
   })
 
-  it('урок без интерактивных заданий не тащит скрипт', () => {
+  it('в любом уроке есть чем рисовать поверх страницы', () => {
     const lesson: Lesson = {
       meta: { subject: 'english', topic: 'Тест', level: 'B1', durationMin: 45, language: 'ru' },
       blocks: [{ type: 'objectives', items: ['Цель'] }],
     }
 
     const html = lessonToHtml(lesson)
-    expect(html).not.toContain('<script>')
+    // Файл не общая доска, но подчеркнуть и дописать в нём можно — и на уроке
+    // с демонстрацией экрана, и когда ученик делает домашку один.
+    expect(html).toContain('id="ink"')
+    expect(html).toContain('class="ink-tools"')
+    expect(html).toContain('Рисовать')
+    expect(html).toContain('<script>')
   })
 
   it('выдаёт валидный самодостаточный документ', () => {
