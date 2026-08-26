@@ -56,12 +56,26 @@ export interface ExportOptions {
    * С ней файл перестаёт быть пустым бланком и становится памятью о занятии.
    */
   work?: BoardWork
+  /**
+   * Для кого файл. У преподавателя — с ключом и репликами, у ученика — без:
+   * то же занятие, но его глазами. Отдать ученику файл с ответами значит
+   * отдать ему решённое задание.
+   */
+  audience?: 'teacher' | 'student'
 }
 
 export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): string {
-  const { meta } = lesson
   const images = options.images ?? []
   const work = options.work
+  const forStudent = options.audience === 'student'
+
+  // Подсказки «что сказать» — часть преподавательской кухни, и в ученическом
+  // файле их не должно быть даже в разметке: файл открывают и листают, а не
+  // только смотрят на экран.
+  if (forStudent) {
+    lesson = { ...lesson, blocks: lesson.blocks.map((block) => withoutScript(block)) }
+  }
+  const { meta } = lesson
 
   const details = [
     meta.subject === 'physics' ? 'Физика' : 'Английский',
@@ -101,7 +115,7 @@ export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): strin
 ${cover}
 ${body}
 ${work ? renderWork(work) : ''}
-${answers ? renderAnswers(answers, lesson) : ''}
+${answers && !forStudent ? renderAnswers(answers, lesson) : ''}
 ${inkTools(language)}
 <script>${SCRIPT}</script>
 </body>
@@ -477,6 +491,13 @@ ${block.items
 // Мелочи
 // ---------------------------------------------------------------------------
 
+/** Блок без преподавательской реплики: остальное содержание не трогаем. */
+function withoutScript(block: Block): Block {
+  if (!block.say) return block
+  const { say, ...rest } = block
+  return rest as Block
+}
+
 function section(title: string, inner: string): string {
   return `<section><h2>${esc(title)}</h2>\n${inner}</section>`
 }
@@ -608,7 +629,6 @@ details.pull[open] { background: #fff; }
 .dark { position: relative; display: flex; flex-wrap: wrap; gap: 18px 26px; overflow: hidden;
   margin: 10px 0; padding: 26px; border-radius: 12px; background: #232a3a; }
 .hidden-word { position: relative; z-index: 2; color: #232a3a; font-weight: 600; }
-.dark:hover .hidden-word { color: #2b3348; }
 .lamp { position: absolute; z-index: 1; width: 150px; height: 150px; margin: -75px 0 0 -75px;
   border-radius: 50%; background: radial-gradient(circle, #ffe9a8 0%, #ffe9a8 55%, transparent 72%);
   pointer-events: none; transition: opacity .2s; opacity: 0; }

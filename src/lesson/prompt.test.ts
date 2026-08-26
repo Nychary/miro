@@ -103,3 +103,21 @@ describe('опознание собственного промпта', () => {
     expect(looksLikePrompt('{"meta": {}, "blocks": []}')).toBe(false)
   })
 })
+
+describe('приёмы оформления', () => {
+  it('по умолчанию запрещены: приём хорош, пока он неожиданность', () => {
+    const prompt = buildPrompt(BASE)
+    expect(prompt).toContain('Приёмы оформления в этом уроке не нужны')
+    expect(prompt).toContain('Не используй блоки mysterybox')
+  })
+
+  it('разрешены ровно выбранные, и каждый не больше раза', () => {
+    const prompt = buildPrompt({ ...BASE, tricks: ['flashlight', 'halves'] })
+    expect(prompt).toContain('flashlight (фонарик)')
+    expect(prompt).toContain('halves (половинки)')
+    expect(prompt).toContain('не больше одного раза')
+    // Невыбранные приёмы просить нельзя, иначе выбор ничего не значит.
+    expect(prompt).not.toContain('mysterybox (')
+    expect(prompt).not.toContain('pullout (')
+  })
+})

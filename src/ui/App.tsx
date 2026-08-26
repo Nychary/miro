@@ -4,7 +4,7 @@ import { lessonToHtml } from '../export/lessonHtml'
 import { findLessonToCheck } from '../check/findLesson'
 import { startLiveCheck, type LiveCheck } from '../check/liveCheck'
 import { resetChips } from '../check/resetChips'
-import { buildPrompt, type LessonRequest } from '../lesson/prompt'
+import { buildPrompt, TRICK_LABELS, type LessonRequest, type TrickKind } from '../lesson/prompt'
 import { SAMPLES } from '../lesson/samples'
 import { titleFor, type Lesson, type Subject } from '../lesson/schema'
 import { parseLessonResponse } from '../lesson/validate'
@@ -25,6 +25,14 @@ const TRICK_TITLES = {
   pullout: 'тянучка с вопросами',
   flashlight: 'фонарик',
 } as const
+
+/** Чем каждый приём хорош — чтобы выбирать по задаче, а не по названию. */
+const TRICK_HINTS: Record<TrickKind, string> = {
+  mysterybox: 'собрать фразу или правило из карточек, лежащих в коробке',
+  halves: 'пара сходится в целый предмет и проверяет себя сама',
+  pullout: 'вопрос вытягивается наугад — для разговора и разминки',
+  flashlight: 'слова проявляются в луче — для новой лексики и терминов',
+}
 
 type Status =
   | { kind: 'idle' }
@@ -48,6 +56,8 @@ export function App() {
   // он и по умолчанию: классическая остаётся как запасная.
   const [template, setTemplate] = useState<'five' | 'classic' | 'language'>('five')
   const [prevTopic, setPrevTopic] = useState('')
+  // Приёмы по умолчанию выключены: пусть решает тема занятия, а не привычка.
+  const [tricks, setTricks] = useState<TrickKind[]>([])
 
   const [prompt, setPrompt] = useState('')
   const [copied, setCopied] = useState(false)
@@ -70,6 +80,7 @@ export function App() {
   const [chosenFrame, setChosenFrame] = useState('')
   const [withPictures, setWithPictures] = useState(true)
   const [withWork, setWithWork] = useState(false)
+  const [audience, setAudience] = useState<'teacher' | 'student'>('teacher')
 
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const promptSectionRef = useRef<HTMLElement>(null)
@@ -148,6 +159,7 @@ export function App() {
       ...(studentNotes.trim() ? { studentNotes: studentNotes.trim() } : {}),
       ...(style.trim() ? { style: style.trim() } : {}),
       ...(prevTopic.trim() ? { prevTopic: prevTopic.trim() } : {}),
+      ...(tricks.length > 0 ? { tricks } : {}),
     }
     setPrompt(buildPrompt(request))
     setCopied(false)
@@ -326,12 +338,13 @@ export function App() {
       }
     }
 
-    const html = lessonToHtml(lesson, { images: images.images, ...(work ? { work } : {}) })
+    const html = lessonToHtml(lesson, { images: images.images, audience, ...(work ? { work } : {}) })
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `урок-${lesson.meta.topic.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}.html`
+    const slug = lesson.meta.topic.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()
+    link.download = `урок-${slug}${audience === 'student' ? '-ученику' : ''}.html`
     document.body.append(link)
     link.click()
     link.remove()
@@ -444,9 +457,36 @@ export function App() {
               : subject === 'physics'
                 ? 'Цели, разминка, теория, формулы, разбор примера, задачи, игра, вопросы «почему», итоги, домашка. Длиннее и подробнее — для новой темы.'
                 : 'Цели, разминка, грамматика, лексика, половинки, фонарик, пропуски, коробка, говорение, итоги, домашка. Длиннее и подробнее — для новой темы.'}
-            {' '}Обе структуры работают и для физики, и для английского — предмет выбирается выше.
+            {' '}Все три структуры работают и для физики, и для английского — предмет выбирается выше.
           </span>
         </label>
+
+        <fieldset className="tricks">
+          <legend>
+            Приёмы оформления <span className="optional">по умолчанию без них</span>
+          </legend>
+          <span className="hint">
+            Приём хорош, пока он неожиданность: коробка в каждом уроке — уже просто ящик.
+            Отметьте один-два под тему занятия.
+          </span>
+          {(Object.keys(TRICK_LABELS) as TrickKind[]).map((kind) => (
+            <label className="check" key={kind}>
+              <input
+                type="checkbox"
+                checked={tricks.includes(kind)}
+                onChange={(event) =>
+                  setTricks((current) =>
+                    event.target.checked ? [...current, kind] : current.filter((item) => item !== kind),
+                  )
+                }
+              />
+              <span>
+                {TRICK_LABELS[kind]}
+                <span className="hint">{TRICK_HINTS[kind]}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
 
         {template === 'five' && (
           <label>
@@ -704,6 +744,28 @@ export function App() {
               </label>
             </>
           )}
+
+          <div className="segmented">
+            <button
+              type="button"
+              className={audience === 'teacher' ? 'active' : ''}
+              onClick={() => setAudience('teacher')}
+            >
+              Себе
+            </button>
+            <button
+              type="button"
+              className={audience === 'student' ? 'active' : ''}
+              onClick={() => setAudience('student')}
+            >
+              Ученику
+            </button>
+          </div>
+          <span className="hint">
+            {audience === 'teacher'
+              ? 'С ключом к заданиям и репликами «что сказать».'
+              : 'Без ответов и без ваших реплик — то же занятие его глазами.'}
+          </span>
 
           <button
             type="button"

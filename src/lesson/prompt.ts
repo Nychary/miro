@@ -23,6 +23,23 @@ export interface LessonRequest extends Omit<LessonMeta, 'language'> {
   template?: 'classic' | 'five' | 'language'
   /** Тема прошлого занятия — для упражнения «Вспоминаем» в шаблоне «five». */
   prevTopic?: string
+  /**
+   * Какие приёмы оформления разрешены в этом уроке.
+   *
+   * Приём хорош, пока он событие. Коробка в каждом уроке перестаёт быть
+   * коробкой и становится ещё одной формой ввода, поэтому выбор остаётся за
+   * репетитором: пусто — обычные задания без приёмов.
+   */
+  tricks?: TrickKind[]
+}
+
+export type TrickKind = 'mysterybox' | 'halves' | 'pullout' | 'flashlight'
+
+export const TRICK_LABELS: Record<TrickKind, string> = {
+  mysterybox: 'коробка с карточками',
+  halves: 'половинки',
+  pullout: 'тянучка с вопросами',
+  flashlight: 'фонарик',
 }
 
 export function buildPrompt(request: LessonRequest): string {
@@ -35,6 +52,7 @@ export function buildPrompt(request: LessonRequest): string {
       : request.template === 'language'
         ? languageStructure(request)
         : structure(request),
+    tricksSection(request.tricks),
     teacherScript(request),
     SCHEMA_SPEC,
     contentRules(request.subject),
@@ -44,6 +62,35 @@ export function buildPrompt(request: LessonRequest): string {
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Какие приёмы оформления пойдут в урок.
+ *
+ * Выбор всегда за репетитором: приём работает, пока он неожиданность, а
+ * коробка в каждом уроке — уже просто ящик. Поэтому по умолчанию приёмов нет,
+ * и нейросети об этом говорится прямо, иначе она тянет их из описания схемы.
+ */
+function tricksSection(tricks?: TrickKind[]): string {
+  const allowed = tricks ?? []
+
+  if (allowed.length === 0) {
+    return [
+      'Приёмы оформления в этом уроке не нужны.',
+      '— Не используй блоки mysterybox, halves, pullout и flashlight.',
+      '— Там, где по структуре нужно задание на перетаскивание, бери matching, sorting или gapfill.',
+    ].join('\n')
+  }
+
+  const names = allowed.map((kind) => `${kind} (${TRICK_LABELS[kind]})`).join(', ')
+  return [
+    `Приёмы оформления, разрешённые в этом уроке: ${names}.`,
+    '— Используй каждый не больше одного раза и только там, где он к месту по содержанию.',
+    '— Другие приёмы не бери: остальные задания делай обычными (matching, sorting, gapfill).',
+    allowed.length > 1
+      ? '— Двух приёмов на урок достаточно: остальное место отдай содержанию.'
+      : '— Одного приёма на урок достаточно.',
+  ].join('\n')
+}
 
 function role(subject: Subject): string {
   return subject === 'physics'
@@ -382,8 +429,6 @@ const OUTPUT_RULES = [
   '— Не добавляй полей, которых нет в схеме, и не переименовывай существующие.',
   '',
   'Проверь перед ответом:',
-  '— В уроке есть хотя бы два блока из четырёх: mysterybox, halves, pullout, flashlight — это приёмы,',
-  '  ради которых урок не выглядит анкетой, и они обязательны. Если их нет, перепиши в эти типы',
-  '  подходящие задания, а не добавляй новые в конец.',
+  '— Приёмы оформления взяты ровно те, что разрешены выше, и каждый не больше одного раза.',
   '— Каждому заданию с полем ref соответствует запись в блоке answers.',
 ].join('\n')
