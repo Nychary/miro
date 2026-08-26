@@ -684,7 +684,7 @@ const SCRIPT = `
     });
 
     if (total === 0) return '';
-    if (good === total) return lang === 'en' ? 'All correct! 🎉' : 'Всё верно! 🎉';
+    if (good === total) return lang === 'en' ? 'All correct' : 'Всё верно';
     return lang === 'en'
       ? good + ' of ' + total + ' correct — try again'
       : 'Верно ' + good + ' из ' + total + ' — попробуй ещё';

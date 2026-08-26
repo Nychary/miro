@@ -255,7 +255,7 @@ async function renderAudio(canvas: Canvas, block: AudioBlock, title: string): Pr
   await section(canvas, title)
 
   await card(canvas, { fillColor: color.exampleFill, borderColor: color.exampleBorder }, async (inner) => {
-    await canvas.text(`🔊 ${bold(`Track ${block.track}`)}`, {
+    await canvas.text(bold(`Track ${block.track}`), {
       ...inner,
       size: font.sectionTitle,
       gapAfter: gap.xs,
