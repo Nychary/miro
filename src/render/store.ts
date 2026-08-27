@@ -16,9 +16,18 @@ import type { BaseItem } from '@mirohq/websdk-types'
 
 type MetadataValue = Parameters<BaseItem['setMetadata']>[1]
 
-/** Есть ли рядом живая доска Miro. */
+/**
+ * Есть ли рядом доска Miro.
+ *
+ * Признак — сам факт того, что на странице объявлен `miro`. Проверять глубже
+ * (например, что `miro.board` уже отвечает) нельзя: панель решает этот вопрос
+ * один раз при загрузке, а SDK доводит себя до готовности чуть позже. Ответь
+ * мы в этот момент «доски нет» — панель внутри Miro превратилась бы в
+ * автономную и перестала рисовать. Страница без доски скрипт Miro не грузит
+ * вовсе, так что перепутать их нечем.
+ */
 export function onBoard(): boolean {
-  return typeof miro !== 'undefined' && typeof miro?.board?.getAppData === 'function'
+  return typeof miro !== 'undefined' && miro !== null
 }
 
 export interface Store {
