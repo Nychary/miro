@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseLessonResponse } from '../lesson/validate'
-import { listLessonSnapshots, saveLessonSnapshot } from './metadata'
+import { exportArchive, importArchive, listLessonSnapshots, saveLessonSnapshot } from './metadata'
 
 /**
  * Урок уходит в хранилище доски ровно так, как его разобрал валидатор, —
@@ -94,6 +94,39 @@ describe('снимок урока', () => {
     expect(getAppData).toHaveBeenCalledTimes(1)
     // Свежие первыми: обычно нужен последний урок, а не первый за учебный год.
     expect(list.map((entry) => entry.frameId)).toEqual(['b', 'a'])
+  })
+
+  it('уроки выходят из доски файлом и возвращаются обратно', async () => {
+    const lesson = { meta: META, blocks: [{ type: 'objectives' as const, items: ['Цель'] }] }
+    const stored = {
+      'snapshots:index': ['frame-1'],
+      'snapshot:frame-1': {
+        frameId: 'frame-1',
+        lesson,
+        anchors: [{ index: 0, top: 0, bottom: 10 }],
+        savedAt: '2026-08-26T10:00:00.000Z',
+      },
+    }
+    vi.stubGlobal('miro', {
+      board: { setAppData, getAppData: vi.fn().mockResolvedValue(stored) },
+    })
+
+    const archive = await exportArchive()
+    expect(archive.kind).toBe('lesson-builder-archive')
+    expect(archive.lessons).toHaveLength(1)
+    // В файле лежит сам урок, а не готовая страница: из него можно рисовать заново.
+    expect(archive.lessons[0]?.lesson.blocks[0]).toMatchObject({ type: 'objectives' })
+
+    // Файл переносится на другую доску, где ничего нет.
+    setAppData.mockClear()
+    vi.stubGlobal('miro', { board: { setAppData, getAppData: vi.fn().mockResolvedValue([]) } })
+    const restored = await importArchive(JSON.parse(JSON.stringify(archive)))
+    expect(restored).toBe(1)
+    expect(setAppData.mock.calls.some(([key]) => key === 'snapshot:frame-1')).toBe(true)
+  })
+
+  it('чужой файл отклоняется с человеческим объяснением', async () => {
+    await expect(importArchive({ lessons: [] } as never)).rejects.toThrow('не файл с уроками')
   })
 })
 

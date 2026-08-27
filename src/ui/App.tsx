@@ -10,7 +10,13 @@ import { titleFor, type Lesson, type Subject } from '../lesson/schema'
 import { parseLessonResponse } from '../lesson/validate'
 import { collectFrameImages } from '../export/boardImages'
 import { collectBoardWork, type BoardWork } from '../export/boardWork'
-import { listLessonSnapshots, type LessonSnapshot } from '../render/metadata'
+import {
+  exportArchive,
+  importArchive,
+  listLessonSnapshots,
+  type LessonArchive,
+  type LessonSnapshot,
+} from '../render/metadata'
 import { renderLesson } from '../render/renderLesson'
 import { STYLE_SUGGESTIONS } from '../render/theme'
 
@@ -299,6 +305,61 @@ export function App() {
       return
     }
     void draw(parsed.lesson, parsed.warnings)
+  }
+
+  /**
+   * Выгрузка всех уроков одним файлом.
+   *
+   * HTML-копия — это готовая страница: по ней можно провести занятие, но
+   * нельзя пересобрать урок на другой доске. Исходники до сих пор жили только
+   * в памяти Miro и исчезли бы вместе с доступом к ней.
+   */
+  async function downloadArchive() {
+    setStatus({ kind: 'busy', message: 'Собираю все уроки…' })
+    try {
+      const archive = await exportArchive()
+      const blob = new Blob([JSON.stringify(archive)], { type: 'application/json;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `уроки-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.append(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000)
+
+      setStatus({
+        kind: 'done',
+        message: `Сохранено уроков: ${archive.lessons.length}. Из этого файла урок можно нарисовать заново на любой доске.`,
+        warnings: [],
+      })
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        heading: 'Не получилось собрать уроки:',
+        errors: [error instanceof Error ? error.message : 'Неизвестная ошибка Miro'],
+      })
+    }
+  }
+
+  async function uploadArchive(file: File) {
+    setStatus({ kind: 'busy', message: 'Возвращаю уроки на доску…' })
+    try {
+      const archive = JSON.parse(await file.text()) as LessonArchive
+      const restored = await importArchive(archive)
+      await refreshSaved()
+      setStatus({
+        kind: 'done',
+        message: `Уроков вернулось: ${restored}. Они в списке ниже — выберите и нарисуйте заново.`,
+        warnings: [],
+      })
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        heading: 'Не получилось прочитать файл:',
+        errors: [error instanceof Error ? error.message : 'Неизвестная ошибка'],
+      })
+    }
   }
 
   async function downloadHtml() {
@@ -792,6 +853,28 @@ export function App() {
               ? 'С ключом к заданиям и репликами «что сказать».'
               : 'Без ответов и без ваших реплик — то же занятие его глазами.'}
           </span>
+
+          <div className="archive">
+            <button type="button" disabled={saved.length === 0} onClick={() => void downloadArchive()}>
+              Сохранить все уроки одним файлом
+              <span className="hint">
+                исходники, а не готовые страницы: из этого файла урок рисуется заново — на новой
+                доске, в новом аккаунте, где угодно
+              </span>
+            </button>
+            <label className="restore">
+              Вернуть уроки из файла
+              <input
+                type="file"
+                accept="application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  event.target.value = ''
+                  if (file) void uploadArchive(file)
+                }}
+              />
+            </label>
+          </div>
 
           <button
             type="button"

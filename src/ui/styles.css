@@ -352,3 +352,26 @@ summary.reveal + textarea {
 .tricks .check {
   margin-bottom: 8px;
 }
+
+/* Выгрузка исходников: отделена рамкой — это страховка, а не рутинная кнопка. */
+.archive {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.archive button {
+  margin-bottom: 8px;
+}
+
+.restore {
+  display: block;
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+}
+
+.restore input {
+  margin-top: 6px;
+  font-size: 12px;
+}

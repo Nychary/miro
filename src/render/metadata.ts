@@ -282,6 +282,52 @@ export async function listLessonSnapshots(): Promise<LessonSnapshot[]> {
   return entries.reverse()
 }
 
+/**
+ * Перенос всех уроков доски одним файлом.
+ *
+ * Снимки живут в памяти доски, и это удобно ровно до того дня, когда доска
+ * станет недоступна: уроки уйдут вместе с ней, а HTML-копии — это готовые
+ * страницы, из них урок заново не соберёшь и на другую доску не перенесёшь.
+ * Поэтому исходники должны уметь выходить наружу и возвращаться обратно.
+ */
+export interface LessonArchive {
+  kind: 'lesson-builder-archive'
+  version: 1
+  savedAt: string
+  lessons: LessonSnapshot[]
+}
+
+export async function exportArchive(): Promise<LessonArchive> {
+  return {
+    kind: 'lesson-builder-archive',
+    version: 1,
+    savedAt: new Date().toISOString(),
+    lessons: await listLessonSnapshots(),
+  }
+}
+
+/**
+ * Возвращает уроки из файла в память доски.
+ *
+ * Идентификаторы фреймов из чужой доски здесь бессмысленны — тех фреймов тут
+ * нет. Но снимок нужен не ради фрейма, а ради самого урока: панель покажет
+ * его в списке, а нарисовать заново можно в любой момент, поэтому записи
+ * кладём как есть и лишь помечаем, что они пришли извне.
+ */
+export async function importArchive(archive: LessonArchive): Promise<number> {
+  if (archive?.kind !== 'lesson-builder-archive' || !Array.isArray(archive.lessons)) {
+    throw new Error('Это не файл с уроками конструктора.')
+  }
+
+  let restored = 0
+  for (const lesson of archive.lessons) {
+    if (!lesson?.lesson?.blocks) continue
+    await saveLessonSnapshot({ ...lesson, anchors: lesson.anchors ?? [] })
+    restored += 1
+  }
+  return restored
+}
+
 async function readSnapshotIndex(): Promise<string[]> {
   return asIndex(await miro.board.getAppData(SNAPSHOT_INDEX_KEY))
 }
