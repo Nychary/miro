@@ -947,8 +947,14 @@ const SCRIPT = `
       copy.width = canvas.width;
       copy.height = canvas.height;
       if (canvas.width && canvas.height) copy.getContext('2d').drawImage(canvas, 0, 0);
-      canvas.width = document.documentElement.scrollWidth;
-      canvas.height = document.documentElement.scrollHeight;
+      // Мерить страницу, пока холст растянут на всю её ширину, нельзя: он сам
+      // и есть эта ширина. Иначе страница умеет только расширяться — телефон,
+      // повёрнутый обратно в портрет, остаётся с альбомной шириной и уезжает
+      // вбок. Убираем холст из измерения, потом возвращаем.
+      canvas.style.width = canvas.style.height = '0';
+      var page = document.documentElement;
+      canvas.width = Math.max(page.clientWidth, document.body.scrollWidth);
+      canvas.height = Math.max(page.clientHeight, document.body.scrollHeight);
       canvas.style.width = canvas.width + 'px';
       canvas.style.height = canvas.height + 'px';
       if (copy.width && copy.height) ctx.drawImage(copy, 0, 0);
@@ -957,6 +963,12 @@ const SCRIPT = `
     }
     fit();
     window.addEventListener('resize', fit);
+    // Первый замер приходится на момент, когда картинки ещё не встали на
+    // место и страница короче, чем будет. Поэтому меряем ещё раз, когда всё
+    // догрузилось, и следим за телом дальше: урок меняет высоту сам, когда
+    // ученик раскрывает ответы или перекладывает карточки.
+    window.addEventListener('load', fit);
+    if (window.ResizeObserver) new ResizeObserver(fit).observe(document.body);
 
     function setMode(next) {
       mode = mode === next ? 'off' : next;
