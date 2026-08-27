@@ -634,11 +634,20 @@ function chip(value: string, group?: string): string {
   return `<span class="chip" data-value="${esc(value)}"${group ? ` data-group="${esc(group)}"` : ''}>${esc(value)}</span>`
 }
 
-/** Кнопки самопроверки. На печати скрываются — рабочий лист остаётся чистым. */
+/**
+ * Кнопки самопроверки. На печати скрываются — рабочий лист остаётся чистым.
+ *
+ * «Показать ответы» появляется только после проверки, в которой что-то не
+ * сошлось. Порядок именно такой: сначала ученик пробует ещё раз сам, и лишь
+ * потом видит ключ. Цветная рамка без правильного ответа почти бесполезна —
+ * ученик знает, что ошибся, но не знает, как надо, и та же ошибка возвращается
+ * при следующей встрече с заданием.
+ */
 function controls(language: 'ru' | 'en'): string {
   const check = language === 'en' ? 'Check' : 'Проверить'
   const reset = language === 'en' ? 'Reset cards' : 'Вернуть карточки'
-  return `<div class="controls"><button type="button" class="btn check">${check}</button><button type="button" class="btn reset">${reset}</button><span class="verdict" aria-live="polite"></span></div>`
+  const keys = language === 'en' ? 'Show answers' : 'Показать ответы'
+  return `<div class="controls"><button type="button" class="btn check">${check}</button><button type="button" class="btn reset">${reset}</button><button type="button" class="btn keys" hidden>${keys}</button><span class="verdict" aria-live="polite"></span></div>`
 }
 
 function esc(value: string): string {
@@ -705,7 +714,9 @@ span.slot .chip { margin: 1px 0; }
 .controls { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; }
 .btn { padding: 7px 16px; border: 1px solid #4262ff; border-radius: 8px; background: #4262ff;
   color: #fff; font: inherit; cursor: pointer; }
-.btn.reset { background: transparent; color: #4262ff; }
+.btn.reset, .btn.keys { background: transparent; color: #4262ff; }
+.key { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 5px;
+  background: #e6f0ea; color: #2e6b4f; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .verdict { font-weight: 600; }
 .box { position: relative; display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 10px;
   padding: 26px 16px 16px; border: 3px solid #9c6a34; border-radius: 4px 4px 14px 14px; background: #c98b4b; }
@@ -797,15 +808,25 @@ const SCRIPT = `
 
     root.querySelectorAll('.chip').forEach(function (chip) { enableDrag(chip, root, bank); });
 
+    var keysBtn = root.querySelector('.btn.keys');
+
     root.querySelector('.btn.check').addEventListener('click', function () {
       verdict.textContent = runCheck(root, lang);
+      // Ключ предлагаем только тогда, когда есть чему не сойтись: после
+      // безошибочной проверки кнопка не нужна и только сбивает.
+      if (keysBtn) keysBtn.hidden = !root.querySelector('.bad');
     });
+
+    if (keysBtn) keysBtn.addEventListener('click', function () { showKeys(root, lang); });
+
     root.querySelector('.btn.reset').addEventListener('click', function () {
       root.querySelectorAll('.chip').forEach(function (chip) {
         chip.classList.remove('ok', 'bad');
         bank.appendChild(chip);
       });
       root.querySelectorAll('.slot, .zone').forEach(function (el) { el.classList.remove('ok', 'bad'); });
+      root.querySelectorAll('.key').forEach(function (el) { el.remove(); });
+      if (keysBtn) keysBtn.hidden = true;
       verdict.textContent = '';
     });
   });
@@ -1035,6 +1056,36 @@ const SCRIPT = `
     field.addEventListener('touchmove', move);
     field.addEventListener('mouseleave', function () { lamp.style.opacity = '0'; });
   });
+
+  /**
+   * Правильный ответ рядом с ошибкой.
+   *
+   * Ученик уже попробовал сам и увидел, что не сошлось; теперь ему нужно
+   * знать, как надо, — иначе ошибка возвращается при следующей встрече с
+   * заданием. Ключ показывается только у неверных мест: там, где сошлось,
+   * подсказывать нечего.
+   */
+  function showKeys(root, lang) {
+    root.querySelectorAll('.slot.bad').forEach(function (slot) {
+      if (slot.querySelector('.key')) return;
+      var answer = slot.getAttribute('data-answer');
+      if (!answer) return;
+      var key = document.createElement('span');
+      key.className = 'key';
+      key.textContent = answer;
+      slot.appendChild(key);
+    });
+
+    // В сортировке правильное место карточки — её собственная группа: имя
+    // колонки лежит прямо на карточке, искать его не нужно.
+    root.querySelectorAll('.chip.bad[data-group]').forEach(function (chip) {
+      if (chip.querySelector('.key')) return;
+      var key = document.createElement('span');
+      key.className = 'key';
+      key.textContent = (lang === 'en' ? 'to: ' : 'сюда: ') + chip.getAttribute('data-group');
+      chip.appendChild(key);
+    });
+  }
 
   function runCheck(root, lang) {
     var total = 0;
