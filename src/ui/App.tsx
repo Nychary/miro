@@ -14,11 +14,27 @@ import {
   exportArchive,
   importArchive,
   listLessonSnapshots,
+  saveLessonSnapshot,
   type LessonArchive,
   type LessonSnapshot,
 } from '../render/metadata'
 import { renderLesson } from '../render/renderLesson'
+import { onBoard } from '../render/store'
 import { STYLE_SUGGESTIONS } from '../render/theme'
+
+/**
+ * Есть ли рядом доска.
+ *
+ * Панель открывается двумя способами: колонкой внутри Miro и просто ссылкой
+ * в браузере. Второй способ — не запасной вход, а страховка: производство
+ * уроков не должно зависеть от того, работает ли сегодня Miro и остался ли к
+ * нему доступ. Форма, промпт, разбор ответа и скачивание файла живут без
+ * доски; на доску нужны только отрисовка и проверка карточек.
+ *
+ * Значение читается один раз при загрузке: доска не может появиться посреди
+ * сессии.
+ */
+const BOARD = onBoard()
 
 const DEFAULT_LEVEL: Record<Subject, string> = {
   physics: '8 класс',
@@ -86,7 +102,7 @@ export function App() {
   // урок файлом можно было только сразу после отрисовки.
   const [saved, setSaved] = useState<LessonSnapshot[]>([])
   const [chosenFrame, setChosenFrame] = useState('')
-  const [withPictures, setWithPictures] = useState(true)
+  const [withPictures, setWithPictures] = useState(BOARD)
   const [withWork, setWithWork] = useState(false)
   const [audience, setAudience] = useState<'teacher' | 'student'>('teacher')
 
@@ -228,6 +244,37 @@ export function App() {
     }
   }
 
+  /**
+   * Урок без доски: разобрали ответ, проверили, запомнили.
+   *
+   * Рисовать здесь нечего — фрейма нет и не будет, — но всё остальное, ради
+   * чего панель существует, работает: ошибки в ответе нейросети видны сразу,
+   * сценарий и ответы открываются ниже, а урок ложится в память браузера и
+   * скачивается файлом. Идентификатор берётся из времени: доска раздавала
+   * его сама, а без доски нужен хоть какой-то, лишь бы разные уроки не
+   * затирали друг друга.
+   */
+  async function keep(lesson: Lesson, warnings: string[] = []) {
+    const frameId = `local-${Date.now().toString(36)}`
+    setLastLesson(lesson)
+    setChosenFrame(frameId)
+    try {
+      await saveLessonSnapshot({ frameId, lesson, anchors: [], savedAt: new Date().toISOString() })
+      await refreshSaved()
+    } catch {
+      // Память браузера могла отказать — урок всё равно у нас в руках,
+      // и кнопка «Скачать урок файлом» ниже работает от lastLesson.
+    }
+    setStatus({
+      kind: 'done',
+      message: `Урок «${lesson.meta.topic}» готов. Скачайте его файлом внизу — карточки в нём перетаскиваются, задания проверяют себя сами.`,
+      warnings,
+    })
+  }
+
+  /** Что делает кнопка «Нарисовать»: на доске — рисует, без доски — запоминает. */
+  const place = BOARD ? draw : keep
+
   async function toggleLive() {
     if (liveRef.current) {
       liveRef.current.stop()
@@ -304,7 +351,7 @@ export function App() {
       setStatus({ kind: 'error', heading: 'Не получилось разобрать ответ:', errors: parsed.errors })
       return
     }
-    void draw(parsed.lesson, parsed.warnings)
+    void place(parsed.lesson, parsed.warnings)
   }
 
   /**
@@ -343,14 +390,16 @@ export function App() {
   }
 
   async function uploadArchive(file: File) {
-    setStatus({ kind: 'busy', message: 'Возвращаю уроки на доску…' })
+    setStatus({ kind: 'busy', message: BOARD ? 'Возвращаю уроки на доску…' : 'Читаю файл с уроками…' })
     try {
       const archive = JSON.parse(await file.text()) as LessonArchive
       const restored = await importArchive(archive)
       await refreshSaved()
       setStatus({
         kind: 'done',
-        message: `Уроков вернулось: ${restored}. Они в списке ниже — выберите и нарисуйте заново.`,
+        message: `Уроков вернулось: ${restored}. Они в списке ниже — выберите и ${
+          BOARD ? 'нарисуйте заново' : 'скачайте файлом'
+        }.`,
         warnings: [],
       })
     } catch (error) {
@@ -379,7 +428,7 @@ export function App() {
     // исключительно по снимку — а если снимок не сохранился, файл молча уходил
     // без оформления, и понять почему было невозможно.
     const frameId = snapshot?.frameId ?? lastFrameId
-    if (withPictures && frameId) {
+    if (BOARD && withPictures && frameId) {
       setStatus({ kind: 'busy', message: 'Собираю картинки с доски…' })
       try {
         images = await collectFrameImages(
@@ -397,7 +446,7 @@ export function App() {
     // Ответы ученика и его заметки: то, ради чего файл становится памятью
     // о занятии, а не бланком. Берутся с доски в момент сохранения.
     let work: BoardWork | undefined
-    if (withWork && frameId) {
+    if (BOARD && withWork && frameId) {
       setStatus({ kind: 'busy', message: 'Собираю работу ученика…' })
       try {
         work = await collectBoardWork(frameId, snapshot?.savedAt ?? new Date(0).toISOString())
@@ -440,11 +489,11 @@ export function App() {
       warnings.push(
         `Картинок найдено, но не удалось забрать: ${images.skipped}. Скорее всего, Miro не отдаёт их файлы из панели — покажите мне это сообщение, найдём другой путь.`,
       )
-    } else if (withPictures && !frameId) {
+    } else if (BOARD && withPictures && !frameId) {
       warnings.push(
         'Картинки не искали: неизвестно, в каком фрейме урок. Нарисуйте урок заново — тогда доска запомнит его вместе с фреймом.',
       )
-    } else if (withPictures && images.images.length === 0) {
+    } else if (BOARD && withPictures && images.images.length === 0) {
       warnings.push(
         'Картинок на уроке не нашлось. Они должны лежать внутри рамки урока — если картинка легла рядом с фреймом, перетащите её внутрь.',
       )
@@ -452,7 +501,9 @@ export function App() {
 
     setStatus({
       kind: 'done',
-      message: `Файл сохранён: ${images.images.length} картинок с доски, ${size} КБ.`,
+      message: BOARD
+        ? `Файл сохранён: ${images.images.length} картинок с доски, ${size} КБ.`
+        : `Файл сохранён, ${size} КБ. Откройте его двойным щелчком — он работает без интернета.`,
       warnings,
     })
   }
@@ -462,7 +513,11 @@ export function App() {
   return (
     <>
       <h1>Конструктор уроков</h1>
-      <p className="subtitle">Собирает урок на доске: теория, задания и ответы.</p>
+      <p className="subtitle">
+        {BOARD
+          ? 'Собирает урок на доске: теория, задания и ответы.'
+          : 'Собирает урок файлом: теория, задания и ответы. Доска не нужна — файл открывается в любом браузере.'}
+      </p>
 
       <section className="step">
         <div className="step-label">Шаг 1 — про урок</div>
@@ -543,8 +598,9 @@ export function App() {
             placeholder="ссылка с Wordwall, LearningApps, YouTube"
           />
           <span className="hint">
-            Встанет прямо на доску живым окном — ученику не придётся уходить в соседнюю вкладку.
-            В скачанном файле останется ссылкой.
+            {BOARD
+              ? 'Встанет прямо на доску живым окном — ученику не придётся уходить в соседнюю вкладку. В скачанном файле останется ссылкой.'
+              : 'В уроке останется ссылкой — ученик откроет её из файла одним щелчком.'}
           </span>
         </label>
 
@@ -659,29 +715,32 @@ export function App() {
           onChange={(event) => setAnswer(event.target.value)}
           placeholder="Вставьте сюда ответ нейросети"
         />
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={answersOnBoard}
-            onChange={(event) => setAnswersOnBoard(event.target.checked)}
-          />
-          <span>
-            Вынести ответы фреймом на доску
-            <span className="hint">
-              осторожно: ученик с правами редактирования может до них доскроллить
+        {BOARD && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={answersOnBoard}
+              onChange={(event) => setAnswersOnBoard(event.target.checked)}
+            />
+            <span>
+              Вынести ответы фреймом на доску
+              <span className="hint">
+                осторожно: ученик с правами редактирования может до них доскроллить
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )}
         <button
           type="button"
           className="primary"
           disabled={busy || !answer.trim()}
           onClick={drawFromAnswer}
         >
-          Нарисовать урок
+          {BOARD ? 'Нарисовать урок' : 'Собрать урок'}
         </button>
       </section>
 
+      {BOARD && (
       <section className="step">
         <div className="step-label">Во время занятия</div>
         <p className="hint-line">
@@ -705,6 +764,7 @@ export function App() {
           <span className="hint">чтобы дать тот же урок следующему ученику</span>
         </button>
       </section>
+      )}
 
       {status.kind === 'busy' && <div className="status">{status.message}</div>}
 
@@ -781,9 +841,9 @@ export function App() {
 
           {saved.length === 0 && !lastLesson && (
             <p className="hint">
-              Здесь появится кнопка «Скачать урок файлом». Доска помнит только уроки, нарисованные
-              этой панелью: если ваши уроки старше обновления, нарисуйте любой урок заново — и он
-              встанет в список.
+              {BOARD
+                ? 'Здесь появится кнопка «Скачать урок файлом». Доска помнит только уроки, нарисованные этой панелью: если ваши уроки старше обновления, нарисуйте любой урок заново — и он встанет в список.'
+                : 'Здесь появится кнопка «Скачать урок файлом». Соберите урок выше — или верните уроки из файла кнопкой ниже.'}
             </p>
           )}
 
@@ -801,7 +861,7 @@ export function App() {
             </label>
           )}
 
-          {(saved.length > 0 || lastLesson) && (
+          {BOARD && (saved.length > 0 || lastLesson) && (
             <>
               <label className="check">
                 <input
@@ -858,8 +918,8 @@ export function App() {
             <button type="button" disabled={saved.length === 0} onClick={() => void downloadArchive()}>
               Сохранить все уроки одним файлом
               <span className="hint">
-                исходники, а не готовые страницы: из этого файла урок рисуется заново — на новой
-                доске, в новом аккаунте, где угодно
+                исходники, а не готовые страницы: из этого файла урок собирается заново — на новой
+                доске, в новом аккаунте, вообще без доски
               </span>
             </button>
             <label className="restore">
@@ -903,11 +963,11 @@ export function App() {
 
       <details className="samples">
         <summary>Образцы для проверки вёрстки</summary>
-        <button type="button" disabled={busy} onClick={() => void draw(SAMPLES.physics)}>
+        <button type="button" disabled={busy} onClick={() => void place(SAMPLES.physics)}>
           Физика: закон Ома
           <span className="hint">стиль «Космос», интеллект-карта, рефлексия</span>
         </button>
-        <button type="button" disabled={busy} onClick={() => void draw(SAMPLES.english)}>
+        <button type="button" disabled={busy} onClick={() => void place(SAMPLES.english)}>
           Английский: Past Simple
           <span className="hint">стиль «Барби», три интерактива, рефлексия</span>
         </button>

@@ -1,5 +1,6 @@
 import type { BaseItem } from '@mirohq/websdk-types'
 import type { Lesson } from '../lesson/schema'
+import { store } from './store'
 
 /**
  * Разметка интерактивных заданий на доске.
@@ -248,18 +249,16 @@ export async function saveLessonSnapshot(snapshot: LessonSnapshot): Promise<void
   const evicted = updated.slice(0, Math.max(0, updated.length - HISTORY_LIMIT))
   const kept = updated.slice(-HISTORY_LIMIT)
 
+  const memory = store()
   for (const id of evicted) {
-    await miro.board.setAppData(SNAPSHOT_KEY_PREFIX + id, null)
+    await memory.write(SNAPSHOT_KEY_PREFIX + id, null)
   }
-  await miro.board.setAppData(SNAPSHOT_INDEX_KEY, plain(kept) as unknown as MetadataValue)
-  await miro.board.setAppData(
-    SNAPSHOT_KEY_PREFIX + snapshot.frameId,
-    plain(snapshot) as unknown as MetadataValue,
-  )
+  await memory.write(SNAPSHOT_INDEX_KEY, plain(kept))
+  await memory.write(SNAPSHOT_KEY_PREFIX + snapshot.frameId, plain(snapshot))
 }
 
 export async function loadLessonSnapshot(frameId: string): Promise<LessonSnapshot | null> {
-  return asSnapshot(await miro.board.getAppData(SNAPSHOT_KEY_PREFIX + frameId))
+  return asSnapshot(await store().read(SNAPSHOT_KEY_PREFIX + frameId))
 }
 
 /**
@@ -271,7 +270,7 @@ export async function loadLessonSnapshot(frameId: string): Promise<LessonSnapsho
  * панели, и чем дольше живёт доска, тем она длиннее.
  */
 export async function listLessonSnapshots(): Promise<LessonSnapshot[]> {
-  const all = (await miro.board.getAppData()) as Record<string, unknown>
+  const all = await store().readAll()
   const index = asIndex(all[SNAPSHOT_INDEX_KEY])
 
   const entries: LessonSnapshot[] = []
@@ -329,7 +328,7 @@ export async function importArchive(archive: LessonArchive): Promise<number> {
 }
 
 async function readSnapshotIndex(): Promise<string[]> {
-  return asIndex(await miro.board.getAppData(SNAPSHOT_INDEX_KEY))
+  return asIndex(await store().read(SNAPSHOT_INDEX_KEY))
 }
 
 function asIndex(raw: unknown): string[] {

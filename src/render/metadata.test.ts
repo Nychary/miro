@@ -130,6 +130,51 @@ describe('снимок урока', () => {
   })
 })
 
+describe('панель без доски', () => {
+  /**
+   * Панель открывается и просто ссылкой в браузере, без Miro. Уроки тогда
+   * некуда класть на доску — они ложатся в память браузера, и список должен
+   * читаться оттуда же. Если это сломается, репетитор потеряет всю историю
+   * ровно в тот день, когда доска станет недоступна, — то есть тогда, когда
+   * запасной вход и понадобится.
+   */
+  it('помнит уроки в памяти браузера', async () => {
+    const memory = new Map<string, string>()
+    vi.stubGlobal('miro', undefined)
+    vi.stubGlobal('window', {
+      localStorage: {
+        get length() {
+          return memory.size
+        },
+        key: (index: number) => [...memory.keys()][index] ?? null,
+        getItem: (key: string) => memory.get(key) ?? null,
+        setItem: (key: string, value: string) => void memory.set(key, value),
+        removeItem: (key: string) => void memory.delete(key),
+      },
+    })
+
+    const parsed = parseLessonResponse(
+      JSON.stringify({ meta: META, blocks: [{ type: 'objectives', items: ['Цель'] }] }),
+    )
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    await saveLessonSnapshot({
+      frameId: 'local-1',
+      lesson: parsed.lesson,
+      anchors: [],
+      savedAt: '2026-08-27T10:00:00.000Z',
+    })
+
+    // Доску никто не трогал: без неё панель обязана обходиться сама.
+    expect(setAppData).not.toHaveBeenCalled()
+
+    const list = await listLessonSnapshots()
+    expect(list).toHaveLength(1)
+    expect(list[0]?.lesson.meta.topic).toBe('Тема')
+  })
+})
+
 /** Miro проверяет значение по схеме до сериализации, поэтому ищем в глубину. */
 function hasUndefined(value: unknown): boolean {
   if (value === undefined) return true
