@@ -25,6 +25,7 @@ import { GAP_MARKER, REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/sche
 import { shuffle } from '../render/composition'
 import type { LessonImage, LessonNote } from './boardImages'
 import type { BoardWork } from './boardWork'
+import type { BoardLook } from './boardLook'
 
 /**
  * Рендер урока в самодостаточный HTML-файл.
@@ -65,6 +66,8 @@ export interface ExportOptions {
    * отдать ему решённое задание.
    */
   audience?: 'teacher' | 'student'
+  /** Фактические цвета урока на доске: файл должен быть на него похож. */
+  look?: BoardLook
 }
 
 export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): string {
@@ -108,7 +111,7 @@ export function lessonToHtml(lesson: Lesson, options: ExportOptions = {}): strin
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(meta.topic)}</title>
-<style>${CSS}</style>
+<style>${CSS}${palette(options.look)}</style>
 </head>
 <body>
 <header>
@@ -358,6 +361,26 @@ ${controls(language)}
  * стрелкой. Холст лежит поверх страницы и включается кнопкой, чтобы не мешать
  * перетаскивать карточки.
  */
+/**
+ * Палитра доски поверх заводской.
+ *
+ * Переопределяем только переменные, а не сами правила: так остальная вёрстка
+ * файла — рамки заданий, подсветка проверки, печать — продолжает работать,
+ * какой бы тёмной ни оказалась доска.
+ */
+function palette(look?: BoardLook): string {
+  if (!look) return ''
+
+  const rules = [
+    look.page ? `--page:${look.page}` : '',
+    look.ink ? `--ink:${look.ink}` : '',
+    look.card ? `--card:${look.card}` : '',
+    look.border ? `--card-line:${look.border}` : '',
+  ].filter(Boolean)
+
+  return rules.length > 0 ? `:root{${rules.join(';')}}` : ''
+}
+
 function inkTools(language: 'ru' | 'en'): string {
   const t =
     language === 'en'
@@ -599,7 +622,9 @@ function esc(value: string): string {
 }
 
 const CSS = `
-:root { color-scheme: light; }
+:root { color-scheme: light; --page: #ffffff; --ink: #12151a; --card: #f2f5ff; --card-line: #c9d4ff; }
+body { background: var(--page); color: var(--ink); }
+.card { background: var(--card); border-color: var(--card-line); }
 * { box-sizing: border-box; }
 body { margin: 0 auto; max-width: 860px; padding: 32px 24px; font-family: 'Segoe UI', system-ui, sans-serif;
   font-size: 15px; line-height: 1.55; color: #12151a; }

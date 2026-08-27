@@ -306,7 +306,7 @@ export function App() {
     // Картинки живут только на доске, поэтому забираем их прямо перед
     // сохранением: репетитор украшает урок уже после отрисовки, и в файл
     // должно попасть то, что на доске сейчас, а не то, что было при генерации.
-    let images: Awaited<ReturnType<typeof collectFrameImages>> = { images: [], notes: [], skipped: 0 }
+    let images: Awaited<ReturnType<typeof collectFrameImages>> = { images: [], notes: [], look: {}, skipped: 0 }
     let imageError: string | null = null
     let warningsFromWork: string | null = null
 
@@ -345,6 +345,7 @@ export function App() {
     const html = lessonToHtml(lesson, {
       images: images.images,
       notes: images.notes,
+      look: images.look,
       audience,
       ...(work ? { work } : {}),
     })

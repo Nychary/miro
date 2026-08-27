@@ -79,8 +79,14 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
     for (const [index, block] of drawable.entries()) {
       progress(`Блок ${index + 1} из ${drawable.length}: ${titleFor(block, lesson.meta.language)}`)
       const top = canvas.top
+      const before = canvas.items.length
       await renderBlock(canvas, block, lesson)
-      anchors.push({ index, top, bottom: canvas.top })
+      anchors.push({
+        index,
+        top,
+        bottom: canvas.top,
+        ids: canvas.items.slice(before).map((item) => item.id),
+      })
     }
 
     // Декорации рассыпаются по площади урока и уходят под карточки — видно их

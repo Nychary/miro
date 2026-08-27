@@ -1,6 +1,7 @@
 import type { Frame, Image } from '@mirohq/websdk-types'
 import { absoluteCenter, loadParents, type Positioned } from '../render/geometry'
 import type { BlockAnchor } from '../render/metadata'
+import { readBoardLook, type BoardLook } from './boardLook'
 
 /**
  * Сбор картинок, которые репетитор положил на урок руками.
@@ -35,6 +36,8 @@ export interface LessonNote {
 
 export interface CollectResult {
   images: LessonImage[]
+  /** Цвета урока, как он выглядит на доске сейчас. */
+  look: BoardLook
   /** Что дописано на доске руками: подписи, стикеры, пометки. */
   notes: LessonNote[]
   /** Сколько картинок не удалось забрать — о них честно говорим в панели. */
@@ -61,16 +64,17 @@ export async function collectFrameImages(
   onProgress?: (message: string) => void,
 ): Promise<CollectResult> {
   const [frame] = (await miro.board.get({ id: [frameId] })) as Frame[]
-  if (!frame) return { images: [], notes: [], skipped: 0 }
+  if (!frame) return { images: [], notes: [], look: {}, skipped: 0 }
 
   // Урок, нарисованный до появления разметки секций, границ блоков не помнит.
   // Тогда делим фрейм на равные полосы по числу секций: попадание грубее,
   // но картинка хотя бы остаётся в своей половине урока, а не уезжает в шапку.
   const marks = anchors.length > 0 ? anchors : evenAnchors(frame, blockCount)
 
+  const look = await readBoardLook(frame, marks).catch(() => ({}))
   const notes = await handwritten(frame, ownIds, marks)
   const pictures = await picturesOver(frame)
-  if (pictures.length === 0) return { images: [], notes, skipped: 0 }
+  if (pictures.length === 0) return { images: [], notes, look, skipped: 0 }
 
   // Сверху вниз — в том же порядке, в каком идут секции в файле.
   const ordered = [...pictures].sort((a, b) => a.y - b.y || a.x - b.x)
@@ -102,7 +106,7 @@ export async function collectFrameImages(
     }
   }
 
-  return { images, notes, skipped }
+  return { images, notes, look, skipped }
 }
 
 /**
