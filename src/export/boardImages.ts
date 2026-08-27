@@ -322,14 +322,21 @@ type Bitmap = ImageBitmap | HTMLImageElement
 
 async function loadBitmap(picture: Image): Promise<Bitmap | null> {
   // Путь через SDK: Miro отдаёт свою же картинку без разговоров о доменах.
-  try {
-    const dataUrl = await picture.getDataUrl()
-    if (dataUrl) {
-      const bitmap = await fromUrl(dataUrl)
-      if (bitmap) return bitmap
+  //
+  // Формат просим явно. Без аргумента Miro отдаёт «preview» — уменьшенную
+  // копию в 120 точек по длинной стороне, и в файл уезжала размытая марка
+  // вместо картинки. Растянуть её обратно нельзя: пикселей уже нет.
+  for (const format of ['original', undefined] as const) {
+    try {
+      const dataUrl = await (format ? picture.getDataUrl(format) : picture.getDataUrl())
+      if (dataUrl) {
+        const bitmap = await fromUrl(dataUrl)
+        if (bitmap) return bitmap
+      }
+    } catch {
+      // Оригинал может не отдаться — например, картинка слишком велика.
+      // Тогда пробуем без формата, и только потом обычной загрузкой.
     }
-  } catch {
-    // Старые версии SDK метода не знают — идём обычным путём.
   }
 
   try {
