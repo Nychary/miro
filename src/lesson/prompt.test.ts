@@ -140,3 +140,14 @@ describe('объём текста для чтения', () => {
     expect(school).toContain('250-350 слов')
   })
 })
+
+describe('игра или ролик в уроке', () => {
+  it('без ссылки секции нет, со ссылкой — есть и с указанием места', () => {
+    expect(buildPrompt(BASE)).not.toContain('блок embed')
+
+    const withGame = buildPrompt({ ...BASE, gameUrl: 'https://wordwall.net/ru/resource/123' })
+    expect(withGame).toContain('https://wordwall.net/ru/resource/123')
+    // Игра должна работать на тему, а не висеть в конце для галочки.
+    expect(withGame).toContain('где игра работает на тему занятия')
+  })
+})

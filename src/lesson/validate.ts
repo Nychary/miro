@@ -514,6 +514,23 @@ function validateBlock(input: unknown, path: string, problems: Problems): Block 
       }
     }
 
+    case 'embed': {
+      const url = requireString(input.url, `${path}.url`, problems)
+      // Живой ссылке на доске нужен полный адрес: «wordwall.net/игра» Miro
+      // не откроет, а ошибка вылезет уже во время занятия.
+      if (url && !/^https?:\/\//i.test(url)) {
+        problems.error(`${path}.url`, 'ожидалась ссылка целиком, вместе с https://')
+      }
+      const minutes = typeof input.minutes === 'number' && input.minutes > 0 ? input.minutes : undefined
+      return {
+        type,
+        title,
+        url,
+        instruction: requireString(input.instruction, `${path}.instruction`, problems),
+        ...(minutes ? { minutes } : {}),
+      }
+    }
+
     case 'choice': {
       const items = requireArray(input.items, `${path}.items`, problems).map((item, index) => {
         const at = `${path}.items[${index}]`

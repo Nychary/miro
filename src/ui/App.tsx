@@ -58,6 +58,8 @@ export function App() {
   const [prevTopic, setPrevTopic] = useState('')
   // Приёмы по умолчанию выключены: пусть решает тема занятия, а не привычка.
   const [tricks, setTricks] = useState<TrickKind[]>([])
+  /** Ссылка на игру или ролик: конструктор встроит её прямо в урок. */
+  const [gameUrl, setGameUrl] = useState('')
 
   const [prompt, setPrompt] = useState('')
   const [copied, setCopied] = useState(false)
@@ -160,6 +162,7 @@ export function App() {
       ...(style.trim() ? { style: style.trim() } : {}),
       ...(prevTopic.trim() ? { prevTopic: prevTopic.trim() } : {}),
       ...(tricks.length > 0 ? { tricks } : {}),
+      ...(gameUrl.trim() ? { gameUrl: gameUrl.trim() } : {}),
     }
     setPrompt(buildPrompt(request))
     setCopied(false)
@@ -468,6 +471,19 @@ export function App() {
                 ? 'Цели, разминка, теория, формулы, разбор примера, задачи, игра, вопросы «почему», итоги, домашка. Длиннее и подробнее — для новой темы.'
                 : 'Цели, разминка, грамматика, лексика, половинки, фонарик, пропуски, коробка, говорение, итоги, домашка. Длиннее и подробнее — для новой темы.'}
             {' '}Все три структуры работают и для физики, и для английского — предмет выбирается выше.
+          </span>
+        </label>
+
+        <label>
+          Игра или видео <span className="optional">необязательно</span>
+          <input
+            value={gameUrl}
+            onChange={(event) => setGameUrl(event.target.value)}
+            placeholder="ссылка с Wordwall, LearningApps, YouTube"
+          />
+          <span className="hint">
+            Встанет прямо на доску живым окном — ученику не придётся уходить в соседнюю вкладку.
+            В скачанном файле останется ссылкой.
           </span>
         </label>
 

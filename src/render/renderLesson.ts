@@ -453,6 +453,8 @@ function estimateBlockHeight(block: Block): number {
       return sectionOverhead + 400 + block.groups.length * 60
     case 'gapfill':
       return sectionOverhead + block.sentences.length * 130 + 300
+    case 'embed':
+      return sectionOverhead + 720
     case 'choice':
       return sectionOverhead + block.items.length * 190
     case 'mysterybox':

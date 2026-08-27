@@ -3,6 +3,7 @@ import type {
   AudioBlock,
   Block,
   ChoiceBlock,
+  EmbedBlock,
   ExampleBlock,
   FlashlightBlock,
   FormulasBlock,
@@ -27,7 +28,7 @@ import type {
   WarmupBlock,
 } from '../lesson/schema'
 import { GAP_MARKER, REFLECTION_DEFAULT_PROMPTS, titleFor } from '../lesson/schema'
-import { Canvas, bold, bullets, escapeHtml, numbered, paragraphs } from './canvas'
+import { Canvas, bold, bullets, escapeHtml, numbered, paragraphs, type CanvasItem } from './canvas'
 import { card, cellWidth, columns, dropZone, grid, rows, section, shuffle } from './composition'
 import { tagItem, type ChipRecord, type ZoneRecord } from './metadata'
 import { color, font, gap, size, sticky } from './theme'
@@ -74,6 +75,8 @@ export async function renderBlock(canvas: Canvas, block: Block, lesson: Lesson):
       return renderGapFill(canvas, block, title)
     case 'choice':
       return renderChoice(canvas, block, title)
+    case 'embed':
+      return renderEmbed(canvas, block, title)
     case 'mysterybox':
       return renderMysteryBox(canvas, block, title)
     case 'halves':
@@ -725,6 +728,53 @@ async function renderGapFill(canvas: Canvas, block: GapFillBlock, title: string)
 // фонаря. Механика проверки от этого не меняется — она по-прежнему сверяет
 // текст карточки с текстом зоны, — а урок перестаёт выглядеть как анкета.
 // ---------------------------------------------------------------------------
+
+/**
+ * Игра или ролик прямо на доске.
+ *
+ * Единственный блок, который открывает окно наружу: Miro умеет держать живую
+ * страницу внутри доски, и это снимает вечную беду с играми — ученик уходит
+ * в соседнюю вкладку и не возвращается.
+ *
+ * Если встроить не удалось (доска не разрешает этот адрес, нет сети), на
+ * месте окна остаётся карточка со ссылкой: урок не должен разваливаться
+ * из-за одной игры.
+ */
+async function renderEmbed(canvas: Canvas, block: EmbedBlock, title: string): Promise<void> {
+  await section(canvas, title)
+  const note = block.minutes ? `${block.instruction} (примерно ${block.minutes} мин)` : block.instruction
+  await canvas.text(paragraphs(escapeHtml(note)), { color: color.muted, gapAfter: gap.md })
+
+  const width = canvas.width * 0.72
+  const height = width * 0.62
+  const top = canvas.top
+
+  try {
+    const embed = await miro.board.createEmbed({
+      url: block.url,
+      x: canvas.left + width / 2,
+      y: top + height / 2,
+      width,
+      mode: 'inline',
+    })
+    canvas.adopt(embed as unknown as CanvasItem, { left: canvas.left, top, width, height })
+  } catch {
+    await canvas.shape({
+      left: canvas.left,
+      top,
+      width,
+      height: 200,
+      content: `${bold('Игра открывается по ссылке')}<p>${escapeHtml(block.url)}</p>`,
+      fillColor: color.exampleFill,
+      borderColor: color.exampleBorder,
+      fontSize: font.small,
+      flow: false,
+    })
+    canvas.top = top + 200
+  }
+
+  canvas.advance(gap.md)
+}
 
 /**
  * Выбор варианта.

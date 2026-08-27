@@ -66,6 +66,7 @@ export type Block =
   | SortingBlock
   | GapFillBlock
   | ChoiceBlock
+  | EmbedBlock
   | MysteryBoxBlock
   | HalvesBlock
   | PullOutBlock
@@ -299,6 +300,26 @@ export interface SpeakingBlock extends BlockBase<'speaking'> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Встроенная страница: игра, ролик, тренажёр.
+ *
+ * Это единственный блок, содержимое которого конструктор не делает сам —
+ * ссылку приносит репетитор. Зато он снимает вечный спор «доска или сервис
+ * с играми»: игра открывается прямо на уроке, а не соседней вкладкой, куда
+ * ученик уходит и не возвращается.
+ *
+ * На доске встаёт живой встроенной страницей, в файле — карточкой со ссылкой:
+ * файл обязан открываться без интернета, а игра без него всё равно не работает.
+ */
+export interface EmbedBlock extends BlockBase<'embed'> {
+  /** Адрес игры или ролика: Wordwall, LearningApps, YouTube, что угодно. */
+  url: string
+  /** Что делать с этой игрой — инструкция ученику. */
+  instruction: string
+  /** Сколько примерно занимает: репетитору для планирования урока. */
+  minutes?: number
+}
+
+/**
  * Выбор варианта — самое частое упражнение языковых курсов.
  *
  * Ученик читает предложение с пропуском и кладёт в него ту карточку, которая
@@ -457,6 +478,7 @@ export const DEFAULT_TITLES: Record<Block['type'], { ru: string; en: string }> =
   sorting: { ru: 'Распредели по группам', en: 'Sort into groups' },
   gapfill: { ru: 'Заполни пропуски', en: 'Fill in the gaps' },
   choice: { ru: 'Выбери верное', en: 'Choose the correct option' },
+  embed: { ru: 'Игра', en: 'Game' },
   mysterybox: { ru: 'Волшебная коробка', en: 'Mystery box' },
   halves: { ru: 'Собери половинки', en: 'Match the halves' },
   pullout: { ru: 'Вытяни вопрос', en: 'Pull out a question' },

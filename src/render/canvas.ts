@@ -1,5 +1,6 @@
 import type {
   Connector,
+  Embed,
   FontFamily,
   Shape,
   StickyNote,
@@ -35,7 +36,7 @@ export interface Box {
  * методы работы со слоями и удалением принимают именно их, и без этого
  * каждый вызов пришлось бы сопровождать приведением типа.
  */
-export type CanvasItem = Shape | Text | StickyNote
+export type CanvasItem = Shape | Text | StickyNote | Embed
 
 export interface TextOptions {
   /** Левый край. По умолчанию — левый край колонки. */
@@ -83,6 +84,9 @@ export interface StickyOptions {
   alignVertical?: 'top' | 'middle' | 'bottom'
   shape?: 'square' | 'rectangle'
 }
+
+/** Отступ под принятым объектом — такой же, как между карточками. */
+const gapAfterDefault = 20
 
 export class Canvas {
   /** Всё созданное — в порядке создания. Нужно, чтобы потом сложить во фрейм. */
@@ -345,6 +349,17 @@ export class Canvas {
     })
     this.backdrops.push(item)
     return item
+  }
+
+  /**
+   * Принять в поток объект, созданный не самим холстом.
+   *
+   * Встроенная страница создаётся напрямую через SDK — у холста нет своего
+   * метода для неё, и незачем: это единственный случай. Но габариты и список
+   * объектов холст обязан знать, иначе фрейм урока обрежет игру пополам.
+   */
+  adopt(item: CanvasItem, box: Box): void {
+    this.register(item, box, true, gapAfterDefault)
   }
 
   /** Фигура на среднем слое: над подложками, но под содержимым. */

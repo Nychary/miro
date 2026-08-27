@@ -12,6 +12,7 @@ import type {
   MatchingBlock,
   MindmapBlock,
   ChoiceBlock,
+  EmbedBlock,
   MysteryBoxBlock,
   PullOutBlock,
   ReadingBlock,
@@ -175,6 +176,8 @@ function renderBlock(block: Block, lesson: Lesson): string {
       return section(title, gapfill(block, lesson.meta.language))
     case 'choice':
       return section(title, choice(block, lesson.meta.language))
+    case 'embed':
+      return section(title, embedded(block))
     case 'mysterybox':
       return section(title, mysteryBox(block, lesson.meta.language))
     case 'halves':
@@ -402,6 +405,21 @@ function inkTools(language: 'ru' | 'en'): string {
   <button type="button" class="ink-btn" data-ink="erase">${t.erase}</button>
   <button type="button" class="ink-btn" data-ink="clear">${t.clear}</button>
 </div>`
+}
+
+/**
+ * Игра или ролик в файле.
+ *
+ * Живой страницей её здесь не сделать: файл обязан открываться без интернета,
+ * а игра без него всё равно мертва. Поэтому в файле остаётся крупная карточка
+ * со ссылкой — ученик открывает её одним нажатием, а на печати видит адрес.
+ */
+function embedded(block: EmbedBlock): string {
+  const time = block.minutes ? ` · примерно ${block.minutes} мин` : ''
+  return `<p class="muted">${esc(block.instruction)}${time}</p>
+<a class="game" href="${esc(block.url)}" target="_blank" rel="noopener">
+  <strong>Открыть игру</strong><span>${esc(block.url)}</span>
+</a>`
 }
 
 /** Выбор варианта: у каждой строки свои карточки и своя зона под ответ. */
@@ -734,6 +752,10 @@ table.work tr.bad td:last-child { color: #d64545; font-weight: 600; }
 ol.choice > li { margin-bottom: 16px; }
 .choice-line { margin-bottom: 6px; }
 ol.choice .bank { margin: 0; min-height: 0; }
+.game { display: block; margin: 10px 0; padding: 18px 20px; border: 2px dashed #4262ff;
+  border-radius: 12px; background: #f2f5ff; color: #12151a; text-decoration: none; }
+.game strong { display: block; font-size: 17px; margin-bottom: 4px; }
+.game span { font-size: 13px; color: #6b7280; word-break: break-all; }
 .hand { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .hand span { padding: 8px 14px; border: 1px solid #e0c840; border-radius: 10px;
   background: #fffbe8; font-size: 15px; }

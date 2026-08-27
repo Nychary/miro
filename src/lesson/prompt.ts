@@ -23,6 +23,8 @@ export interface LessonRequest extends Omit<LessonMeta, 'language'> {
   template?: 'classic' | 'five' | 'language'
   /** Тема прошлого занятия — для упражнения «Вспоминаем» в шаблоне «five». */
   prevTopic?: string
+  /** Ссылка на игру или ролик, которую репетитор хочет видеть в уроке. */
+  gameUrl?: string
   /**
    * Какие приёмы оформления разрешены в этом уроке.
    *
@@ -53,6 +55,7 @@ export function buildPrompt(request: LessonRequest): string {
         ? languageStructure(request)
         : structure(request),
     tricksSection(request.tricks),
+    gameSection(request.gameUrl),
     teacherScript(request),
     SCHEMA_SPEC,
     contentRules(request.subject),
@@ -118,6 +121,19 @@ function tricksSection(tricks?: TrickKind[]): string {
     allowed.length > 1
       ? '— Двух приёмов на урок достаточно: остальное место отдай содержанию.'
       : '— Одного приёма на урок достаточно.',
+  ].join('\n')
+}
+
+/** Игра, которую репетитор принёс сам: её место в уроке выбирает нейросеть. */
+function gameSection(url?: string): string | null {
+  const trimmed = url?.trim()
+  if (!trimmed) return null
+
+  return [
+    `Вставь в урок блок embed с этой ссылкой: ${trimmed}`,
+    '— Поставь его туда, где игра работает на тему занятия, а не в конец «чтобы было».',
+    '— В instruction напиши, что именно делать с игрой и на что смотреть.',
+    '— Заголовок блока придумай по теме урока, а не «Игра».',
   ].join('\n')
 }
 
@@ -375,6 +391,8 @@ const SCHEMA_SPEC = `Формат ответа — один JSON-объект т
 { "type": "gapfill", "ref": string, "instruction": string,
   "sentences": [{ "text": string, "answers": string[] }],  // пропуск в text — ровно три подчёркивания: ___
   "distractors": string[] }                                // необязательно
+{ "type": "embed", "url": string, "instruction": string, "minutes": number }
+  // Игра или ролик, встроенные прямо в урок. Ссылку целиком, вместе с https://
 { "type": "choice", "ref": string, "instruction": string,
   "items": [{
     "text": string,       // предложение с пропуском: пропуск — ровно три подчёркивания ___

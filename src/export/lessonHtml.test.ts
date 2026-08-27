@@ -223,3 +223,26 @@ describe('устойчивость', () => {
     expect(html).not.toContain('buy cakes')
   })
 })
+
+describe('игра в уроке', () => {
+  it('в файле остаётся ссылкой: без интернета игра всё равно мертва', () => {
+    const lesson: Lesson = {
+      meta: { subject: 'english', topic: 'Игра', level: 'A2', durationMin: 60, language: 'ru' },
+      blocks: [
+        {
+          type: 'embed',
+          url: 'https://wordwall.net/ru/resource/123',
+          instruction: 'Собери пары слов на время',
+          minutes: 7,
+        },
+      ],
+    }
+
+    const html = lessonToHtml(lesson)
+    expect(html).toContain('class="game"')
+    expect(html).toContain('href="https://wordwall.net/ru/resource/123"')
+    expect(html).toContain('примерно 7 мин')
+    // Самодостаточность файла важнее живого окна: внешних загрузок нет.
+    expect(html).not.toMatch(/<iframe/)
+  })
+})
