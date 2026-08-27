@@ -84,13 +84,13 @@ describe('полнота экспорта', () => {
     const pixel = 'data:image/png;base64,iVBORw0KGgo='
     const html = lessonToHtml(PHYSICS_SAMPLE, {
       images: [
-        { dataUrl: pixel, alt: 'шапка', blockIndex: -1, widthRatio: 1 },
-        { dataUrl: pixel, alt: 'схема цепи', blockIndex: 1, widthRatio: 0.4 },
+        { dataUrl: pixel, alt: 'фон урока', blockIndex: -1, widthRatio: 1, behind: true },
+        { dataUrl: pixel, alt: 'схема цепи', blockIndex: 1, widthRatio: 0.4, behind: false },
       ],
     })
 
     // Картинка шапки идёт до первой секции, картинка блока — после его заголовка.
-    const cover = html.indexOf('alt="шапка"')
+    const cover = html.indexOf('alt="фон урока"')
     const firstSection = html.indexOf('<section>')
     const scheme = html.indexOf('alt="схема цепи"')
     expect(cover).toBeGreaterThan(0)
@@ -99,6 +99,8 @@ describe('полнота экспорта', () => {
 
     // Ширина повторяет доску, а сама картинка вшита в файл.
     expect(html).toContain('style="width:40%"')
+    // Картинка, лежавшая под содержимым, остаётся фоном и не закрывает текст.
+    expect(html).toContain('class="pictures behind"')
     expect(html).toContain(`src="${pixel}"`)
   })
 

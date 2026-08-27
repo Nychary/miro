@@ -26,6 +26,14 @@ export interface LessonImage {
   blockIndex: number
   /** Ширина картинки на доске относительно ширины фрейма, 0…1. */
   widthRatio: number
+  /**
+   * Картинка лежит под содержимым урока, то есть работает фоном.
+   *
+   * Слой на доске — не украшение, а смысл: фотография под карточками задаёт
+   * настроение, а та же фотография поверх них закрывает задание. В файле
+   * фоновая картинка уходит за текст, остальные встают в поток.
+   */
+  behind: boolean
 }
 
 /** Подпись, наклейка или заметка, добавленная человеком поверх урока. */
@@ -54,6 +62,7 @@ interface Placed {
   picture: Image
   x: number
   y: number
+  behind: boolean
 }
 
 export async function collectFrameImages(
@@ -73,7 +82,7 @@ export async function collectFrameImages(
 
   const look = await readBoardLook(frame, marks).catch(() => ({}))
   const notes = await handwritten(frame, ownIds, marks)
-  const pictures = await picturesOver(frame)
+  const pictures = await picturesOver(frame, ownIds)
   if (pictures.length === 0) return { images: [], notes, look, skipped: 0 }
 
   // Сверху вниз — в том же порядке, в каком идут секции в файле.
@@ -98,6 +107,7 @@ export async function collectFrameImages(
       alt: picture.title || 'Иллюстрация урока',
       blockIndex: blockAt(placed.y, marks),
       widthRatio: frame.width > 0 ? Math.min(1, picture.width / frame.width) : 0.5,
+      behind: placed.behind,
     })
 
     if (budget <= 0) {
@@ -167,7 +177,7 @@ function stripTags(html: string): string {
  * туда и клал. Поэтому вторым заходом берём все картинки доски и оставляем те,
  * что попадают в прямоугольник фрейма.
  */
-async function picturesOver(frame: Frame): Promise<Placed[]> {
+async function picturesOver(frame: Frame, ownIds: string[]): Promise<Placed[]> {
   const candidates = new Map<string, Image>()
 
   for (const child of await frame.getChildren()) {
@@ -195,14 +205,51 @@ async function picturesOver(frame: Frame): Promise<Placed[]> {
   const top = frame.y - frame.height / 2
   const bottom = frame.y + frame.height / 2
 
-  const placed: Placed[] = []
+  const inside: { picture: Image; x: number; y: number }[] = []
   for (const picture of candidates.values()) {
     const center = absoluteCenter(picture as unknown as Positioned, parents)
     if (center.x < left || center.x > right || center.y < top || center.y > bottom) continue
-    placed.push({ picture, x: center.x, y: center.y })
+    inside.push({ picture, x: center.x, y: center.y })
   }
+  if (inside.length === 0) return []
 
+  // Слой картинки сравниваем со слоем содержимого урока: ниже — фон, выше —
+  // наклейка поверх. Без этого фотография, положенная под карточки, в файле
+  // ложилась поверх текста и закрывала задание.
+  const contentLayer = await medianLayer(ownIds)
+  const placed: Placed[] = []
+  for (const entry of inside) {
+    const layer = await miro.board.getLayerIndex(entry.picture).catch(() => Number.NaN)
+    const behind = Number.isFinite(layer) && Number.isFinite(contentLayer) && layer < contentLayer
+    placed.push({ ...entry, behind })
+  }
   return placed
+}
+
+/**
+ * Типичный слой содержимого урока.
+ *
+ * Опрашивать сотню объектов дорого, поэтому берём горсть образцов из разных
+ * мест урока: карточки рисовались подряд, и их слои идут плотной группой.
+ */
+async function medianLayer(ownIds: string[]): Promise<number> {
+  if (ownIds.length === 0) return Number.NaN
+
+  const step = Math.max(1, Math.floor(ownIds.length / 8))
+  const sample = ownIds.filter((_, index) => index % step === 0).slice(0, 8)
+  const items = (await miro.board.get({ id: sample })) as unknown as Parameters<
+    typeof miro.board.getLayerIndex
+  >[0][]
+
+  const layers: number[] = []
+  for (const item of items) {
+    const layer = await miro.board.getLayerIndex(item).catch(() => Number.NaN)
+    if (Number.isFinite(layer)) layers.push(layer)
+  }
+  if (layers.length === 0) return Number.NaN
+
+  layers.sort((a, b) => a - b)
+  return layers[Math.floor(layers.length / 2)] as number
 }
 
 /** Равные полосы вместо настоящих границ секций — запасной вариант. */

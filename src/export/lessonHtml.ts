@@ -581,7 +581,17 @@ function gallery(images: LessonImage[], blockIndex: number): string {
   const mine = images.filter((image) => image.blockIndex === blockIndex)
   if (mine.length === 0) return ''
 
-  return `<div class="pictures">${mine
+  // Фон и наклейки разводим по разным полосам: у фона своя, приглушённая,
+  // иначе фотография во всю ширину растолкает текст урока.
+  const behind = mine.filter((image) => image.behind)
+  const above = mine.filter((image) => !image.behind)
+  return band(behind, 'pictures behind') + band(above, 'pictures')
+}
+
+function band(images: LessonImage[], className: string): string {
+  if (images.length === 0) return ''
+
+  return `<div class="${className}">${images
     .map(
       (image) =>
         `<img src="${image.dataUrl}" alt="${esc(image.alt)}" style="width:${Math.round(
@@ -728,6 +738,9 @@ ol.choice .bank { margin: 0; min-height: 0; }
 .hand span { padding: 8px 14px; border: 1px solid #e0c840; border-radius: 10px;
   background: #fffbe8; font-size: 15px; }
 .pictures { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin: 10px 0; }
+/* Фон урока: лежал под карточками на доске — остаётся фоном и в файле. */
+.pictures.behind { opacity: .5; margin: 4px 0; }
+.pictures.behind img { border-radius: 12px; }
 .pictures img { max-width: 100%; height: auto; border-radius: 8px; break-inside: avoid; }
 .hints { margin-top: 8px; }
 .answers { break-before: page; margin-top: 40px; padding-top: 8px; border-top: 3px dashed #d64545; }
