@@ -9,7 +9,7 @@ import { SAMPLES } from '../lesson/samples'
 import { titleFor, type Lesson, type Subject } from '../lesson/schema'
 import { parseLessonResponse } from '../lesson/validate'
 import { collectFrameImages } from '../export/boardImages'
-import { collectBoardWork, type BoardWork } from '../export/boardWork'
+import { collectBoardWork, normalizeText, type BoardWork } from '../export/boardWork'
 import {
   exportArchive,
   importArchive,
@@ -54,6 +54,32 @@ const TRICK_HINTS: Record<TrickKind, string> = {
   halves: 'пара сходится в целый предмет и проверяет себя сама',
   pullout: 'вопрос вытягивается наугад — для разговора и разминки',
   flashlight: 'слова проявляются в луче — для новой лексики и терминов',
+}
+
+/**
+ * Все тексты, которые конструктор написал на доске сам.
+ *
+ * Нужны сбору работы ученика: пустую заготовку от заполненной отличает не
+ * время создания — оно у них одно, — а то, свой ли в ней текст. Идём по
+ * уроку целиком, не перечисляя поля блоков: блоков два с лишним десятка, и
+ * список полей пришлось бы дописывать при каждом новом типе задания.
+ */
+function ownTexts(lesson: Lesson): ReadonlySet<string> {
+  const texts = new Set<string>()
+  const walk = (value: unknown): void => {
+    if (typeof value === 'string') {
+      const clean = normalizeText(value)
+      if (clean) texts.add(clean)
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach(walk)
+      return
+    }
+    if (value && typeof value === 'object') Object.values(value).forEach(walk)
+  }
+  walk(lesson)
+  return texts
 }
 
 type Status =
@@ -449,7 +475,11 @@ export function App() {
     if (BOARD && withWork && frameId) {
       setStatus({ kind: 'busy', message: 'Собираю работу ученика…' })
       try {
-        work = await collectBoardWork(frameId, snapshot?.savedAt ?? new Date(0).toISOString())
+        work = await collectBoardWork(
+          frameId,
+          snapshot?.savedAt ?? new Date(0).toISOString(),
+          ownTexts(lesson),
+        )
       } catch (error) {
         warningsFromWork = error instanceof Error ? error.message : 'неизвестная ошибка Miro'
       }

@@ -9,8 +9,15 @@ import { loadExercises, type ZoneRecord } from '../render/metadata'
  * ученик прошёл: с его ответами в клетках и его заметками на полях. Из доски
  * это достаётся двумя способами. Карточки помечены при отрисовке, поэтому про
  * каждую известно, в какой зоне она лежит и та ли это зона. Всё остальное —
- * стикеры и подписи, которых при отрисовке не было, — узнаётся по времени
- * создания: старше урока значит наше, моложе значит ученика.
+ * стикеры и подписи — узнаётся по времени создания: старше урока значит наше,
+ * моложе значит ученика.
+ *
+ * У времени создания есть слепое пятно, и оно стоило ученику его работы.
+ * Конструктор рисует пустые заготовки — стикеры рефлексии, клетки таблиц, —
+ * и ученик пишет прямо в них. Объект при этом остаётся ровесником урока, и по
+ * времени он «наш», хотя текст в нём чужой. Поэтому у объектов урока смотрим
+ * не только возраст, но и содержимое: текст, которого нет в самом уроке,
+ * написал человек.
  *
  * Чего здесь принципиально нет: линий, нарисованных пером. Miro отдаёт их
  * панели как объект без содержимого, и восстановить росчерк неоткуда —
@@ -46,12 +53,28 @@ interface Timed extends Positioned {
   title?: string
 }
 
-export async function collectBoardWork(frameId: string, drawnAt: string): Promise<BoardWork> {
+export async function collectBoardWork(
+  frameId: string,
+  drawnAt: string,
+  /**
+   * Тексты, которые конструктор написал сам. По ним отличается заготовка,
+   * оставшаяся пустой, от заготовки, в которую ученик что-то вписал.
+   */
+  ownTexts: ReadonlySet<string> = new Set(),
+): Promise<BoardWork> {
   const [frame] = (await miro.board.get({ id: [frameId] })) as Frame[]
   if (!frame) return { answers: [], notes: [], drawings: 0 }
 
-  const [answers, extras] = await Promise.all([collectAnswers(frameId), collectExtras(frame, drawnAt)])
+  const [answers, extras] = await Promise.all([
+    collectAnswers(frameId),
+    collectExtras(frame, drawnAt, ownTexts),
+  ])
   return { answers, ...extras }
+}
+
+/** Приведение к виду, в котором текст доски сравним с текстом урока. */
+export function normalizeText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
 /** Что и куда ученик разложил в интерактивных заданиях. */
@@ -107,6 +130,7 @@ async function collectAnswers(frameId: string): Promise<StudentAnswer[]> {
 async function collectExtras(
   frame: Frame,
   drawnAt: string,
+  ownTexts: ReadonlySet<string>,
 ): Promise<{ notes: StudentNote[]; drawings: number }> {
   const born = Date.parse(drawnAt)
   const children = (await frame.getChildren()) as unknown as Timed[]
@@ -123,13 +147,18 @@ async function collectExtras(
       continue
     }
 
+    const text = stripTags(child.content ?? '')
+    if (!text) continue
+
     const createdAt = child.createdAt ? Date.parse(child.createdAt) : Number.NaN
     // Секунда запаса: объекты урока создаются пачкой, и часть из них
     // получает отметку времени чуть позже записи снимка.
-    if (!Number.isFinite(createdAt) || createdAt <= born + 1000) continue
-
-    const text = stripTags(child.content ?? '')
-    if (!text) continue
+    const ours = Number.isFinite(createdAt) && createdAt <= born + 1000
+    // Ровесник урока берётся только тогда, когда текст в нём не наш: значит
+    // это пустая заготовка, в которую ученик написал сам. Совпал с текстом
+    // урока — это наша же подпись, и в работу она не идёт.
+    if (ours && ownTexts.has(normalizeText(text))) continue
+    if (!ours && !Number.isFinite(createdAt)) continue
 
     notes.push({ text, y: absoluteCenter(child, parents).y })
   }
