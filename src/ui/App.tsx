@@ -6,6 +6,7 @@ import { startLiveCheck, type LiveCheck } from '../check/liveCheck'
 import { resetChips } from '../check/resetChips'
 import { buildPrompt, TRICK_LABELS, type LessonRequest, type TrickKind } from '../lesson/prompt'
 import { SAMPLES } from '../lesson/samples'
+import { findVideoTopic, videoSearchUrl } from '../lesson/videoIndex'
 import { titleFor, type Lesson, type Subject } from '../lesson/schema'
 import { parseLessonResponse } from '../lesson/validate'
 import { collectFrameImages } from '../export/boardImages'
@@ -106,8 +107,15 @@ export function App() {
   const [prevTopic, setPrevTopic] = useState('')
   // Приёмы по умолчанию выключены: пусть решает тема занятия, а не привычка.
   const [tricks, setTricks] = useState<TrickKind[]>([])
-  /** Ссылка на игру или ролик: конструктор встроит её прямо в урок. */
-  const [gameUrl, setGameUrl] = useState('')
+  /**
+   * Брать ли к уроку видео, найденное по теме.
+   *
+   * Раньше здесь было поле для ссылки, и его приходилось заполнять руками:
+   * найди ролик, скопируй адрес, вставь. Панель искать не умеет — статическая
+   * страница без сервера и без ключа к YouTube, — но ей и не нужно: указатель
+   * тем лежит внутри неё, и по названию урока ссылка собирается сама.
+   */
+  const [withVideo, setWithVideo] = useState(true)
 
   const [prompt, setPrompt] = useState('')
   const [copied, setCopied] = useState(false)
@@ -136,6 +144,12 @@ export function App() {
   const promptSectionRef = useRef<HTMLElement>(null)
   const statusRef = useRef<HTMLDivElement>(null)
   const busy = status.kind === 'busy'
+
+  // Тема урока приходит живой фразой, поэтому ищем по основам слов, а не по
+  // точному совпадению: «Закон Ома для участка цепи» должен найти электричество.
+  const videoTopic = findVideoTopic(topic, subject)
+  const videoLink = videoTopic?.links[0]
+  const gameUrl = withVideo && videoLink ? videoSearchUrl(videoLink) : ''
 
   /**
    * Урок, о котором сейчас говорит панель.
@@ -620,19 +634,48 @@ export function App() {
           </span>
         </label>
 
-        <label>
-          Игра или видео <span className="optional">необязательно</span>
-          <input
-            value={gameUrl}
-            onChange={(event) => setGameUrl(event.target.value)}
-            placeholder="ссылка с Wordwall, LearningApps, YouTube"
-          />
-          <span className="hint">
-            {BOARD
-              ? 'Встанет прямо на доску живым окном — ученику не придётся уходить в соседнюю вкладку. В скачанном файле останется ссылкой.'
-              : 'В уроке останется ссылкой — ученик откроет её из файла одним щелчком.'}
-          </span>
-        </label>
+        <div className="video">
+          <div className="step-label">Видео к теме</div>
+          {videoTopic && videoLink ? (
+            <>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={withVideo}
+                  onChange={(event) => setWithVideo(event.target.checked)}
+                />
+                <span>
+                  {videoLink.channel}: {videoTopic.topic}
+                  <span className="hint">
+                    {BOARD
+                      ? 'встанет на доску живым окном — ученику не придётся уходить в соседнюю вкладку'
+                      : 'в уроке останется ссылкой'}
+                  </span>
+                </span>
+              </label>
+              {/*
+                Ссылка ведёт в поиск ПО КАНАЛУ, а не в конкретный ролик:
+                ролики протухают, поиск канала — нет. Поэтому её стоит открыть
+                и глазами выбрать, что ставить: первые два результата обычно
+                по теме, но гарантии на это никто не даёт.
+              */}
+              <a
+                className="hint-line"
+                href={videoSearchUrl(videoLink)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Посмотреть, что найдётся
+              </a>
+            </>
+          ) : (
+            <p className="hint">
+              {topic.trim()
+                ? 'Этой темы в базе видео пока нет. Напишите мне тему — проверю каналы и добавлю.'
+                : 'Заполните тему — панель сама найдёт ролик по каналам, которые вы отобрали.'}
+            </p>
+          )}
+        </div>
 
         <fieldset className="tricks">
           <legend>

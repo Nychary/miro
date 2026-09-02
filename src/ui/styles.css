@@ -375,3 +375,19 @@ summary.reveal + textarea {
   margin-top: 6px;
   font-size: 12px;
 }
+
+/* Видео к теме: панель находит его сама, поэтому блок не поле ввода, а
+   результат поиска — с галочкой «брать» и ссылкой «посмотреть». */
+.video {
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line, #dde1da);
+  border-radius: 10px;
+}
+.video .step-label {
+  margin-bottom: 8px;
+}
+.video a {
+  display: inline-block;
+  margin-top: 6px;
+}
