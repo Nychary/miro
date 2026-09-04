@@ -272,3 +272,26 @@ describe('таблица сравнения', () => {
     expect(gap.ok).toBe(false)
   })
 })
+
+describe('пропуски в диалоге', () => {
+  it('пускает реплики без пропусков, но требует ответ там, где пропуск есть', () => {
+    const make = (sentences: unknown[]) =>
+      parseLessonResponse(
+        JSON.stringify({
+          meta: { subject: 'english', topic: 'Тема', level: 'B1', durationMin: 60, language: 'ru' },
+          blocks: [{ type: 'gapfill', instruction: 'Complete the conversation.', sentences }],
+        }),
+      )
+
+    // Диалог из учебника: часть реплик заполняется, часть идёт для связности.
+    const dialogue = make([
+      { text: 'Denisa   Hi, Nick! ___ you been shopping?', answers: ['Have'] },
+      { text: 'Miguel   No.', answers: [] },
+    ])
+    expect(dialogue.ok, dialogue.ok ? '' : dialogue.errors.join(' | ')).toBe(true)
+
+    // А вот пропуск без ответа — настоящая дыра: проверять его будет нечем.
+    const hole = make([{ text: 'Nick   Yes, I ___ .', answers: [] }])
+    expect(hole.ok).toBe(false)
+  })
+})

@@ -515,10 +515,18 @@ function validateBlock(input: unknown, path: string, problems: Problems): Block 
           problems.error(at, 'ожидался объект')
           return { text: '', answers: [] }
         }
-        return {
-          text: requireString(sentence.text, `${at}.text`, problems),
-          answers: requireStringArray(sentence.answers, `${at}.answers`, problems),
-        }
+        const text = requireString(sentence.text, `${at}.text`, problems)
+        // Строка без пропуска — это реплика для связности, а не задание.
+        // В диалогах учебника такие идут вперемешку с заполняемыми: «No.»,
+        // «Yes, of course.» Требовать к ним ответ значит выбрасывать из
+        // упражнения половину разговора и ломать его смысл.
+        const hasGap = text.includes(GAP_MARKER)
+        const answers = hasGap
+          ? requireStringArray(sentence.answers, `${at}.answers`, problems)
+          : Array.isArray(sentence.answers)
+            ? sentence.answers.filter((value): value is string => typeof value === 'string')
+            : []
+        return { text, answers }
       })
       const distractors = Array.isArray(input.distractors)
         ? input.distractors.filter((value): value is string => typeof value === 'string')
