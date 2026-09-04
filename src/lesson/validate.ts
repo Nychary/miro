@@ -164,6 +164,26 @@ function requireStringArray(value: unknown, path: string, problems: Problems): s
   return value.map((item, index) => requireString(item, `${path}[${index}]`, problems))
 }
 
+/**
+ * Заголовки таблицы сравнения.
+ *
+ * Первая ячейка шапки — угловая: слева в ней идут названия строк, сверху
+ * названия колонок, и писать в самом углу нечего. Пустой угол — правильная
+ * вёрстка таблицы, а не недоделка урока, поэтому только он и разрешён:
+ * пустой заголовок в середине по-прежнему ошибка, из-за него колонка
+ * останется без имени.
+ */
+function requireTableHeaders(value: unknown, path: string, problems: Problems): string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    problems.error(path, 'ожидался непустой список строк')
+    return []
+  }
+  return value.map((item, index) => {
+    if (index === 0 && typeof item === 'string') return item.trim()
+    return requireString(item, `${path}[${index}]`, problems)
+  })
+}
+
 function requireArray(value: unknown, path: string, problems: Problems): unknown[] {
   if (!Array.isArray(value) || value.length === 0) {
     problems.error(path, 'ожидался непустой список')
@@ -422,7 +442,7 @@ function validateBlock(input: unknown, path: string, problems: Problems): Block 
     case 'grammar': {
       const table = isRecord(input.table)
         ? {
-            headers: requireStringArray(input.table.headers, `${path}.table.headers`, problems),
+            headers: requireTableHeaders(input.table.headers, `${path}.table.headers`, problems),
             rows: Array.isArray(input.table.rows)
               ? input.table.rows.map((row, index) =>
                   Array.isArray(row)

@@ -245,3 +245,30 @@ describe('сквозные проверки', () => {
     expect(result.warnings).toEqual([])
   })
 })
+
+describe('таблица сравнения', () => {
+  it('пускает пустой угол шапки, но не пустую колонку', () => {
+    const make = (headers: unknown[]) =>
+      parseLessonResponse(
+        JSON.stringify({
+          meta: { subject: 'english', topic: 'Тема', level: 'B2', durationMin: 60, language: 'ru' },
+          blocks: [
+            {
+              type: 'grammar',
+              rule: 'Правило',
+              examples: ['She has broken her ski.', 'She broke her ski last winter.'],
+              table: { headers, rows: [['Форма', 'has done', 'did']] },
+            },
+          ],
+        }),
+      )
+
+    // Угловая ячейка пуста намеренно: слева названия строк, сверху колонок.
+    const corner = make(['', 'Present Perfect', 'Past Simple'])
+    expect(corner.ok, corner.ok ? '' : corner.errors.join(' | ')).toBe(true)
+
+    // А вот безымянная колонка в середине — настоящая потеря смысла.
+    const gap = make(['Признак', '', 'Past Simple'])
+    expect(gap.ok).toBe(false)
+  })
+})
