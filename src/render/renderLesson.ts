@@ -314,23 +314,19 @@ async function wrapInFrame(
     childrenIds: ordered.map((item) => item.id),
   })
 
-  // Уводить фрейм назад не нужно и нельзя: Miro запрещает менять слой фреймов,
-  // потому что фрейм и так всегда лежит под своим содержимым.
   await ensureChildren(frame, ordered)
 
-  // Поднимаем содержимое, а не опускаем подложки. Опускать нельзя: sendToBack
-  // отправляет в самый низ доски, то есть под заливку фрейма, и подложка
-  // становится невидимой. Поднятое содержимое оказывается над своей подложкой,
-  // а обе остаются над фреймом.
-  if ((lowerIds.size > 0 || decorations.length > 0) && content.length > 0) {
-    if (canvas.backdrops.length > 0) {
-      await miro.board.bringToFront(canvas.backdrops)
-    }
-    if (canvas.midgrounds.length > 0) {
-      await miro.board.bringToFront(canvas.midgrounds)
-    }
-    await miro.board.bringToFront(content)
-  }
+  // Порядок детей фрейма — это и есть порядок слоёв внутри урока, поэтому
+  // задаём его здесь, последним действием. Раньше этого не делали, а слои
+  // раскладывали через miro.board.bringToFront — и именно это ломало урок:
+  // команда работает на уровне доски, а не фрейма, и выдёргивала объекты из
+  // него. Подложки карточек уезжали в сторону от своего текста, а фрейм
+  // оказывался поверх содержимого.
+  //
+  // Одного `childrenIds` при создании не хватает: `ensureChildren` дописывает
+  // недостающих детей в конец, то есть наверх, и порядок сбивается. Поэтому
+  // переставляем в самом конце, когда все дети уже на месте.
+  await reorderChildren(frame, ordered)
 
   return frame
 }
@@ -369,6 +365,35 @@ async function scatterDecor(
   }
 
   return items
+}
+
+/**
+ * Расставить детей фрейма в порядке слоёв: первый в списке — в самом низу.
+ *
+ * Нужно после того, как все дети прикреплены. Порядок, отданный при создании
+ * фрейма, к этому моменту уже не тот: `ensureChildren` дописывает пропущенных
+ * в конец. Переставляем список целиком — это операция внутри фрейма, поэтому,
+ * в отличие от `bringToFront`, она не выдёргивает объекты из урока.
+ *
+ * Дети, которых мы не знаем (их мог добавить сам Miro), остаются наверху:
+ * выбрасывать из фрейма чужое мы не вправе.
+ */
+async function reorderChildren(frame: Frame, ordered: (CanvasItem | Connector)[]): Promise<void> {
+  // Читаем детей с доски, а не из `frame.childrenIds`: после `frame.add`
+  // свойство у локального объекта фрейма остаётся прежним.
+  const current = (await frame.getChildren()).map((child) => child.id)
+  const attached = new Set(current)
+  const known = new Set(ordered.map((item) => item.id))
+
+  const next = [
+    ...ordered.map((item) => item.id).filter((id) => attached.has(id)),
+    ...current.filter((id) => !known.has(id)),
+  ]
+
+  if (next.length === current.length && next.every((id, index) => id === current[index])) return
+
+  frame.childrenIds = next
+  await frame.sync()
 }
 
 /**
