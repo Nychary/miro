@@ -127,6 +127,16 @@ export class Canvas {
    */
   readonly connectors: Connector[] = []
 
+  /**
+   * Куда мы намеревались поставить каждый объект, в координатах доски.
+   *
+   * Нужно при упаковке во фрейм: координаты ребёнка фрейма отсчитываются от
+   * центра фрейма, а не от доски, и объект, прикреплённый через `frame.add`,
+   * уезжает на величину этого смещения. По этой карте его можно вернуть на
+   * задуманное место.
+   */
+  readonly boxes = new Map<string, Box>()
+
   private readonly columnLeft: number
   private readonly columnWidth: number
   private cursor: number
@@ -197,6 +207,7 @@ export class Canvas {
     const box = child.bbox()
 
     this.items.push(...child.items)
+    for (const [id, itemBox] of child.boxes) this.boxes.set(id, itemBox)
     this.backdrops.push(...child.backdrops)
     this.midgrounds.push(...child.midgrounds)
     this.exercises.push(...child.exercises)
@@ -385,6 +396,7 @@ export class Canvas {
 
   private register(item: CanvasItem, box: Box, flow: boolean, gapAfter = 0): void {
     this.items.push(item)
+    this.boxes.set(item.id, box)
 
     this.extend(box)
 
