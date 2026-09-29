@@ -258,21 +258,19 @@ export function App() {
         setLastFrameId(result.frame.id)
       }
       void refreshSaved()
-      // Приёмы — то, ради чего урок и делается непохожим на анкету. Если их
-      // в ответе нейросети не оказалось, репетитор должен узнать это сразу,
-      // а не искать коробку глазами на готовой доске.
+      // Приёмы называем, когда они есть. Когда их нет — молчим: они выключены
+      // по умолчанию и заказываются галочкой, поэтому их отсутствие это выбор
+      // репетитора, а не недоработка, и попрекать им каждый урок незачем.
       const tricks = lesson.blocks
         .filter((block) => TRICK_TITLES[block.type as keyof typeof TRICK_TITLES])
         .map((block) => TRICK_TITLES[block.type as keyof typeof TRICK_TITLES])
-      const trickNote = tricks.length
-        ? `Приёмы в уроке: ${[...new Set(tricks)].join(', ')}.`
-        : 'Приёмов в этом уроке нет: нейросеть не вернула ни коробку, ни половинки, ни тянучку, ни фонарик. Попросите её добавить их — промпт эти блоки запрашивает.'
+      const trickNote = tricks.length ? ` Приёмы в уроке: ${[...new Set(tricks)].join(', ')}.` : ''
 
       setStatus({
         kind: 'done',
         message: `Готово: ${result.itemCount} объектов${
           result.answersFrame ? ', ответы в отдельном фрейме справа' : ', ответы — ниже в панели'
-        }. ${trickNote}`,
+        }.${trickNote}`,
         warnings: [...warnings, ...result.warnings],
       })
     } catch (error) {

@@ -48,10 +48,21 @@ const HISTORY_LIMIT = 20
 // Метки на объектах
 // ---------------------------------------------------------------------------
 
+/**
+ * Метки на объектах — второй, независимый источник правды об уроке.
+ *
+ * Указатель на фрейме компактнее и быстрее, но он живёт в памяти доски,
+ * а она кончается. Метки же лежат на самих объектах, и пока урок есть на
+ * доске, задания по ним восстановимы. Поэтому в метке хранится всё, что
+ * нужно и проверке, и раскладыванию карточек обратно, — а не только
+ * ожидаемый текст.
+ */
 export interface ZoneMeta {
   role: 'zone'
   /** `ref` упражнения из схемы урока. */
   exercise: string
+  /** Заголовок секции — чтобы отчёт о проверке был понятен без указателя. */
+  title?: string
   /** Текст карточки, которая должна здесь оказаться. */
   expected: string
 }
@@ -59,8 +70,12 @@ export interface ZoneMeta {
 export interface ChipMeta {
   role: 'chip'
   exercise: string
+  title?: string
   /** Текст карточки — то, что сравнивается с `expected` зоны. */
   value: string
+  /** Где карточка лежала сразу после отрисовки, в координатах доски. */
+  homeX?: number
+  homeY?: number
 }
 
 export type ItemMeta = ZoneMeta | ChipMeta
@@ -150,7 +165,86 @@ export async function loadExercises(frameId: string): Promise<LessonExercises | 
   if (entry) return entry
 
   // Уроки, сохранённые до перехода на поключевое хранение.
-  return (await readLegacy()).find((item) => item.frameId === frameId) ?? null
+  const legacy = (await readLegacy()).find((item) => item.frameId === frameId)
+  if (legacy) return legacy
+
+  // Указателя нет. Это не приговор: урок сам себя описывает метками на зонах
+  // и карточках, и по ним задания восстановимы. Сюда попадают уроки, которым
+  // не хватило места в памяти доски, — без этого пути у них не работали бы
+  // ни проверка, ни раскладывание карточек обратно.
+  return readExercisesFromBoard(frameId)
+}
+
+/**
+ * Собрать задания урока с самой доски, по меткам на объектах.
+ *
+ * Медленнее указателя — приходится читать метку у каждого ребёнка фрейма, —
+ * поэтому это запасной путь, а не основной. Зато он не зависит от памяти
+ * доски и работает, пока урок на ней есть.
+ */
+export async function readExercisesFromBoard(frameId: string): Promise<LessonExercises | null> {
+  let children: BaseItem[]
+  try {
+    const frame = await miro.board.getById(frameId)
+    if (!frame || frame.type !== 'frame') return null
+    children = (await (frame as unknown as { getChildren(): Promise<BaseItem[]> }).getChildren()) ?? []
+  } catch {
+    return null
+  }
+
+  const byRef = new Map<string, ExerciseRecord>()
+  const take = (ref: string, title?: string): ExerciseRecord => {
+    const found = byRef.get(ref)
+    if (found) {
+      if (title && !found.title) found.title = title
+      return found
+    }
+    const fresh: ExerciseRecord = { ref, title: title ?? ref, zones: [], chips: [] }
+    byRef.set(ref, fresh)
+    return fresh
+  }
+
+  for (const child of children) {
+    let meta: unknown
+    try {
+      meta = await child.getMetadata(METADATA_KEY)
+    } catch {
+      continue
+    }
+    if (!meta || typeof meta !== 'object') continue
+
+    const tag = meta as {
+      role?: unknown
+      exercise?: unknown
+      title?: unknown
+      expected?: unknown
+      value?: unknown
+      homeX?: unknown
+      homeY?: unknown
+    }
+    if (typeof tag.exercise !== 'string') continue
+
+    if (tag.role === 'zone' && typeof tag.expected === 'string') {
+      take(tag.exercise, typeof tag.title === 'string' ? tag.title : undefined).zones.push({
+        id: child.id,
+        expected: tag.expected,
+      })
+    } else if (tag.role === 'chip' && typeof tag.value === 'string') {
+      take(tag.exercise, typeof tag.title === 'string' ? tag.title : undefined).chips.push({
+        id: child.id,
+        value: tag.value,
+        // Уроки, нарисованные до того, как метка стала помнить место карточки,
+        // проверятся, но разложить их обратно не выйдет — вернуть некуда.
+        homeX: typeof tag.homeX === 'number' ? tag.homeX : 0,
+        homeY: typeof tag.homeY === 'number' ? tag.homeY : 0,
+      })
+    }
+  }
+
+  const exercises = [...byRef.values()].filter((item) => item.zones.length > 0)
+  if (exercises.length === 0) return null
+
+  return { frameId, topic: '', exercises }
 }
 
 /** Все уроки с заданиями, о которых знает доска. Свежие — в конце. */

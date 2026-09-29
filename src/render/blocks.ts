@@ -526,6 +526,7 @@ async function renderSpeaking(canvas: Canvas, block: SpeakingBlock, title: strin
 async function renderChipPool(
   canvas: Canvas,
   exercise: string,
+  title: string,
   chips: { label: string; value: string }[],
   caption: string,
 ): Promise<ChipRecord[]> {
@@ -551,7 +552,14 @@ async function renderChipPool(
       content: escapeHtml(chip.label),
       fillColor: sticky.draggable,
     })
-    await tagItem(note, { role: 'chip', exercise, value: chip.value })
+    await tagItem(note, {
+      role: 'chip',
+      exercise,
+      title,
+      value: chip.value,
+      homeX: note.x,
+      homeY: note.y,
+    })
     // Координаты запоминаем до упаковки во фрейм — сейчас они ещё в системе
     // доски, а у ребёнка фрейма будут отсчитываться от него.
     records.push({ id: note.id, value: chip.value, homeX: note.x, homeY: note.y })
@@ -590,7 +598,7 @@ async function renderMatching(canvas: Canvas, block: MatchingBlock, title: strin
       dropZone(canvas, { left: zoneLeft, top, width: zoneWidth, height }),
     ])
 
-    await tagItem(zone, { role: 'zone', exercise: block.ref, expected: pair.right })
+    await tagItem(zone, { role: 'zone', exercise: block.ref, title, expected: pair.right })
     zones.push({ id: zone.id, expected: pair.right })
     canvas.top = top + height + gap.sm
   }
@@ -598,6 +606,7 @@ async function renderMatching(canvas: Canvas, block: MatchingBlock, title: strin
   const chips = await renderChipPool(
     canvas,
     block.ref,
+    title,
     shuffle(block.pairs.map((pair) => ({ label: pair.right, value: pair.right }))),
     'Карточки — перетащи к нужной паре',
   )
@@ -641,7 +650,7 @@ async function renderSorting(canvas: Canvas, block: SortingBlock, title: string)
         width: groupWidth,
         height: zoneHeight,
       })
-      await tagItem(zone, { role: 'zone', exercise: block.ref, expected: group.name })
+      await tagItem(zone, { role: 'zone', exercise: block.ref, title, expected: group.name })
       return { id: zone.id, expected: group.name }
     }),
   )
@@ -653,6 +662,7 @@ async function renderSorting(canvas: Canvas, block: SortingBlock, title: string)
   const chips = await renderChipPool(
     canvas,
     block.ref,
+    title,
     shuffle(
       block.groups.flatMap((group) => group.items.map((item) => ({ label: item, value: group.name }))),
     ),
@@ -698,7 +708,7 @@ async function renderGapFill(canvas: Canvas, block: GapFillBlock, title: string)
       zones.map((zone, slot) => {
         const expected = sentence.answers[slot] ?? ''
         zoneRecords.push({ id: zone.id, expected })
-        return tagItem(zone, { role: 'zone', exercise: block.ref, expected })
+        return tagItem(zone, { role: 'zone', exercise: block.ref, title, expected })
       }),
     )
 
@@ -712,6 +722,7 @@ async function renderGapFill(canvas: Canvas, block: GapFillBlock, title: string)
   const chips = await renderChipPool(
     canvas,
     block.ref,
+    title,
     shuffle([...answers, ...(block.distractors ?? [])].map((value) => ({ label: value, value }))),
     'Карточки — перетащи в пропуск',
   )
@@ -807,7 +818,7 @@ async function renderChoice(canvas: Canvas, block: ChoiceBlock, title: string): 
       width: size.dropZoneWidth,
       height: size.dropZoneHeight,
     })
-    await tagItem(zone, { role: 'zone', exercise: block.ref, expected: item.correct })
+    await tagItem(zone, { role: 'zone', exercise: block.ref, title, expected: item.correct })
     zones.push({ id: zone.id, expected: item.correct })
 
     // Варианты — под своей строкой, вперемешку.
@@ -822,7 +833,14 @@ async function renderChoice(canvas: Canvas, block: ChoiceBlock, title: string): 
         content: escapeHtml(option),
         fillColor: sticky.draggable,
       })
-      await tagItem(note, { role: 'chip', exercise: block.ref, value: option })
+      await tagItem(note, {
+        role: 'chip',
+        exercise: block.ref,
+        title,
+        value: option,
+        homeX: note.x,
+        homeY: note.y,
+      })
       chips.push({ id: note.id, value: option, homeX: note.x, homeY: note.y })
       left += size.chipWidth + gap.sm
     }
@@ -885,7 +903,14 @@ async function renderMysteryBox(canvas: Canvas, block: MysteryBoxBlock, title: s
       content: escapeHtml(word),
       fillColor: sticky.draggable,
     })
-    await tagItem(note, { role: 'chip', exercise: block.ref, value: word })
+    await tagItem(note, {
+      role: 'chip',
+      exercise: block.ref,
+      title,
+      value: word,
+      homeX: note.x,
+      homeY: note.y,
+    })
     chips.push({ id: note.id, value: word, homeX: note.x, homeY: note.y })
   }
 
@@ -906,7 +931,7 @@ async function renderMysteryBox(canvas: Canvas, block: MysteryBoxBlock, title: s
       width: slotWidth,
       height: size.dropZoneHeight,
     })
-    await tagItem(zone, { role: 'zone', exercise: block.ref, expected })
+    await tagItem(zone, { role: 'zone', exercise: block.ref, title, expected })
     zones.push({ id: zone.id, expected })
   }
 
@@ -961,7 +986,7 @@ async function renderHalves(canvas: Canvas, block: HalvesBlock, title: string): 
     })
 
     const zone = await dropZone(canvas, { left: zoneLeft, top, width: zoneWidth, height })
-    await tagItem(zone, { role: 'zone', exercise: block.ref, expected: pair.right })
+    await tagItem(zone, { role: 'zone', exercise: block.ref, title, expected: pair.right })
     zones.push({ id: zone.id, expected: pair.right })
     canvas.top = top + height + gap.sm
   }
@@ -969,6 +994,7 @@ async function renderHalves(canvas: Canvas, block: HalvesBlock, title: string): 
   const chips = await renderChipPool(
     canvas,
     block.ref,
+    title,
     shuffle(block.pairs.map((pair) => ({ label: pair.right, value: pair.right }))),
     'Вторые половинки — перетащи к своей паре',
   )
