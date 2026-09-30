@@ -1,7 +1,7 @@
 import type { Connector, Frame, Text } from '@mirohq/websdk-types'
 import { titleFor, type AnswersBlock, type Block, type Lesson } from '../lesson/schema'
 import { renderBlock } from './blocks'
-import { Canvas, bold, escapeHtml, paragraphs, type Box, type CanvasItem } from './canvas'
+import { Canvas, bold, escapeHtml, paragraphs, type CanvasItem } from './canvas'
 import { card, section } from './composition'
 import { saveExercises, saveLessonSnapshot, type BlockAnchor } from './metadata'
 import {
@@ -124,16 +124,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
 
   try {
     progress(`Собираю ${canvas.items.length} объектов во фрейм…`)
-    const wrapped = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill, decorations)
-    frame = wrapped.frame
-    if (wrapped.reattached > 0) {
-      // Диагностика: быстрый путь не сработал и объекты пришлось прикреплять
-      // поштучно. Раньше они при этом уезжали от своего места — теперь
-      // возвращаются, но знать, что путь задействован, полезно.
-      warnings.push(
-        `${wrapped.reattached} из ${canvas.items.length} объектов не прикрепились к фрейму сразу — досоединил вручную и вернул на место.`,
-      )
-    }
+    frame = await wrapInFrame(canvas, frameTitle(lesson), color.frameFill, decorations)
   } catch (error) {
     warnings.push(
       `Урок нарисован, но не поместился в один фрейм Miro (${reason(error)}). Он лежит на доске без рамки — работать можно, двигать урок целиком придётся выделением.`,
@@ -189,9 +180,7 @@ export async function renderLesson(lesson: Lesson, options: RenderOptions = {}):
 
   if (answersCanvas && !answersCanvas.isEmpty) {
     try {
-      answersFrame = (
-        await wrapInFrame(answersCanvas, `${frameTitle(lesson)} — ответы`, color.answersFill)
-      ).frame
+      answersFrame = await wrapInFrame(answersCanvas, `${frameTitle(lesson)} — ответы`, color.answersFill)
     } catch (error) {
       warnings.push(`Ответы нарисованы, но без своего фрейма (${reason(error)}).`)
     }
@@ -308,7 +297,7 @@ async function wrapInFrame(
   title: string,
   fillColor: string,
   decorations: Text[] = [],
-): Promise<{ frame: Frame; reattached: number }> {
+): Promise<Frame> {
   const box = canvas.bbox()
 
   // Порядок детей — это порядок слоёв: декорации в самом низу (это фон),
@@ -335,7 +324,7 @@ async function wrapInFrame(
     childrenIds: ordered.map((item) => item.id),
   })
 
-  const reattached = await ensureChildren(frame, ordered, canvas.boxes)
+  await ensureChildren(frame, [[...decorations, ...canvas.backdrops, ...canvas.midgrounds], [...canvas.connectors, ...content]])
 
   // Порядок детей фрейма — это и есть порядок слоёв внутри урока, поэтому
   // задаём его здесь, последним действием. Раньше этого не делали, а слои
@@ -349,7 +338,7 @@ async function wrapInFrame(
   // переставляем в самом конце, когда все дети уже на месте.
   await reorderChildren(frame, ordered)
 
-  return { frame, reattached }
+  return frame
 }
 
 /**
@@ -419,50 +408,29 @@ async function reorderChildren(frame: Frame, ordered: (CanvasItem | Connector)[]
 
 /**
  * `childrenIds` при создании фрейма — быстрый путь, но полагаться на него одного
- * нельзя: если объекты не прикрепились, урок рассыплется при перемещении фрейма.
- * Поэтому недостающие добавляются явно.
+ * нельзя: на живой доске он не прикрепляет ничего, и урок рассыпался бы при
+ * перемещении фрейма. Поэтому недостающие добавляются явно.
  *
- * И сразу возвращаются на место. Координаты ребёнка фрейма отсчитываются от
- * центра фрейма, а не от доски, поэтому объект, прикреплённый через `frame.add`,
- * уезжает ровно на положение фрейма — так подложки карточек и оказывались
- * в стороне от своего текста. Задуманное место каждого объекта холст помнит
- * в `boxes`, по нему и восстанавливаем.
+ * Положение объектов здесь не трогаем, и это принципиально. `frame.add` сам
+ * пересчитывает координаты ребёнка — объект остаётся там, где стоял. Попытка
+ * «вернуть его на место» однажды уже разворотила урок: координаты ребёнка
+ * отсчитываются от левого верхнего угла фрейма, а записаны были от центра,
+ * и нижняя правая часть урока уехала на полфрейма влево и вверх.
  *
- * Возвращает число объектов, которые пришлось прикреплять вручную: ноль
- * означает, что быстрый путь отработал и этот код ни при чём.
+ * Слои добавляются по очереди, снизу вверх: порядок прикрепления — это и
+ * порядок слоёв, а внутри одной пачки он не гарантирован. Если подложка
+ * карточки и её текст попадут в одну пачку, текст может оказаться снизу.
  */
-async function ensureChildren(
-  frame: Frame,
-  items: (CanvasItem | Connector)[],
-  boxes: Map<string, Box>,
-): Promise<number> {
+async function ensureChildren(frame: Frame, layers: (CanvasItem | Connector)[][]): Promise<void> {
   const attached = new Set((await frame.getChildren()).map((child) => child.id))
-  const missing = items.filter((item) => !attached.has(item.id))
-  if (missing.length === 0) return 0
 
   const BATCH = 10
-  for (let index = 0; index < missing.length; index += BATCH) {
-    const batch = missing.slice(index, index + BATCH)
-    await Promise.all(batch.map((item) => frame.add(item)))
-    await Promise.all(batch.map((item) => restorePosition(frame, item, boxes.get(item.id))))
+  for (const layer of layers) {
+    const missing = layer.filter((item) => !attached.has(item.id))
+    for (let index = 0; index < missing.length; index += BATCH) {
+      await Promise.all(missing.slice(index, index + BATCH).map((item) => frame.add(item)))
+    }
   }
-
-  return missing.length
-}
-
-/** Вернуть прикреплённый объект туда, куда его ставил холст. */
-async function restorePosition(
-  frame: Frame,
-  item: CanvasItem | Connector,
-  box: Box | undefined,
-): Promise<void> {
-  // У коннектора своей геометрии нет — его держат концы, двигать нечего.
-  if (!box || item.type === 'connector') return
-
-  const target = item as CanvasItem
-  target.x = box.left + box.width / 2 - frame.x
-  target.y = box.top + box.height / 2 - frame.y
-  await target.sync().catch(() => undefined)
 }
 
 /**

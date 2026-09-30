@@ -155,8 +155,12 @@ export async function saveExercises(data: LessonExercises): Promise<void> {
   for (const id of evicted) {
     await miro.board.setAppData(LESSON_KEY_PREFIX + id, null)
   }
-  await miro.board.setAppData(INDEX_KEY, plain(kept) as unknown as MetadataValue)
-  await miro.board.setAppData(LESSON_KEY_PREFIX + data.frameId, plain(data) as unknown as MetadataValue)
+  await withRoom(data.frameId, () =>
+    miro.board.setAppData(INDEX_KEY, plain(kept) as unknown as MetadataValue),
+  )
+  await withRoom(data.frameId, () =>
+    miro.board.setAppData(LESSON_KEY_PREFIX + data.frameId, plain(data) as unknown as MetadataValue),
+  )
 }
 
 export async function loadExercises(frameId: string): Promise<LessonExercises | null> {
@@ -347,8 +351,77 @@ export async function saveLessonSnapshot(snapshot: LessonSnapshot): Promise<void
   for (const id of evicted) {
     await memory.write(SNAPSHOT_KEY_PREFIX + id, null)
   }
-  await memory.write(SNAPSHOT_INDEX_KEY, plain(kept))
-  await memory.write(SNAPSHOT_KEY_PREFIX + snapshot.frameId, plain(snapshot))
+  await withRoom(snapshot.frameId, () => memory.write(SNAPSHOT_INDEX_KEY, plain(kept)))
+  await withRoom(snapshot.frameId, () =>
+    memory.write(SNAPSHOT_KEY_PREFIX + snapshot.frameId, plain(snapshot)),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Когда память доски кончилась
+//
+// Лимит истории считает уроки, а не байты, и потому не спасает: десяток
+// больших уроков заполняет память задолго до двадцатого. К тому же каждая
+// перерисовка — это новый фрейм и новая запись, а удаление фрейма с доски
+// его записей не трогает. Поэтому при отказе «места нет» освобождаем его
+// сами и пробуем снова.
+// ---------------------------------------------------------------------------
+
+function isStorageFull(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error)
+  return /storage limit|limit[^.]*exceeded/i.test(text)
+}
+
+/** Записать, освобождая место по шагу за раз, пока запись не пройдёт. */
+async function withRoom(keepFrameId: string, write: () => Promise<unknown>): Promise<void> {
+  for (;;) {
+    try {
+      await write()
+      return
+    } catch (error) {
+      if (!isStorageFull(error) || !(await freeRoom(keepFrameId))) throw error
+    }
+  }
+}
+
+/**
+ * Освободить место — один шаг за вызов. Возвращает false, когда освобождать
+ * больше нечего.
+ *
+ * В расход идут только снимки: это файл-страховка, и старейший из них —
+ * наименее нужное, что лежит в памяти. Сначала те, на которые указатель уже
+ * не ссылается: до них панель не дотянется никак. Потом самый старый.
+ *
+ * Указатели заданий не трогаем. У уроков, нарисованных до того, как метки
+ * на карточках стали помнить своё место, раскладывание обратно держится
+ * только на них — а новому уроку указатель не обязателен, он проверяется
+ * и по меткам.
+ */
+async function freeRoom(keepFrameId: string): Promise<boolean> {
+  const memory = store()
+  const all = await memory.readAll()
+  const index = asIndex(all[SNAPSHOT_INDEX_KEY])
+
+  const orphans = Object.keys(all).filter(
+    (key) =>
+      key.startsWith(SNAPSHOT_KEY_PREFIX) &&
+      all[key] !== null &&
+      all[key] !== undefined &&
+      !index.includes(key.slice(SNAPSHOT_KEY_PREFIX.length)),
+  )
+  if (orphans.length > 0) {
+    for (const key of orphans) await memory.write(key, null)
+    return true
+  }
+
+  const oldest = index.find((id) => id !== keepFrameId)
+  if (!oldest) return false
+
+  // Сначала данные, потом указатель: данные освобождают место, а укороченный
+  // указатель влезет туда, где помещался прежний.
+  await memory.write(SNAPSHOT_KEY_PREFIX + oldest, null)
+  await memory.write(SNAPSHOT_INDEX_KEY, plain(index.filter((id) => id !== oldest)))
+  return true
 }
 
 export async function loadLessonSnapshot(frameId: string): Promise<LessonSnapshot | null> {

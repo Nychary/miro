@@ -1,16 +1,25 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { parseLessonResponse } from '../lesson/validate'
+import { ENGLISH_SAMPLE } from '../lesson/samples'
 import { renderLesson } from './renderLesson'
 
 /**
- * Раскладка урока на поддельном SDK.
+ * Упаковка урока во фрейм не должна ничего двигать.
  *
- * Настоящую доску здесь не поднять, но геометрия считается целиком у нас,
- * а поведение Miro, из-за которого объекты уезжали, известно и описуемо:
- * координаты ребёнка фрейма отсчитываются от центра фрейма, а не от доски.
- * Второй сценарий ниже именно его и воспроизводит.
+ * Модель доски здесь списана с живой, а не придумана. На настоящем Miro
+ * выяснилось три вещи, и все три заложены в подделку:
+ *
+ * 1. Координаты ребёнка фрейма отсчитываются от левого верхнего угла фрейма
+ *    (`relativeTo: 'parent_top_left'`), а не от его центра.
+ * 2. `frame.add` сам пересчитывает координаты: объект остаётся там, где стоял.
+ * 3. Запись ребёнку отрицательных координат доска отклоняет.
+ *
+ * Прежняя версия этого теста исходила из обратного — что `frame.add` объект
+ * сдвигает и его надо возвращать. «Возврат» писал координаты от центра, доска
+ * принимала их как отсчёт от угла, и нижняя правая часть урока уезжала на
+ * полфрейма влево и вверх. Тест при этом был зелёным: он проверял согласие
+ * кода с выдуманной моделью. Поэтому теперь проверяется не «всё внутри
+ * фрейма», а сам инвариант: где объект стоял до упаковки, там он и после.
  */
 
 interface FakeItem {
@@ -20,19 +29,21 @@ interface FakeItem {
   y: number
   width: number
   height: number
-  /** Прикреплён ли к фрейму: у ребёнка x и y считаются от центра фрейма. */
-  framed?: boolean
+  framed: boolean
+  /** Последние координаты, которые доска приняла. */
+  saved: { x: number; y: number }
   sync(): Promise<void>
+  setMetadata(): Promise<void>
+  getMetadata(): Promise<unknown>
 }
 
 interface Board {
   created: FakeItem[]
-  frame: () => FakeItem | undefined
-  /** Фактическое положение центра на доске, с поправкой на фрейм. */
-  center: (item: FakeItem) => { x: number; y: number }
+  /** Центры объектов на доске в момент, когда фрейм вот-вот появится. */
+  before: Map<string, { x: number; y: number }>
+  center(item: FakeItem): { x: number; y: number }
 }
 
-/** Высота текста: Miro переносит строки, мы грубо считаем по длине. */
 function textHeight(content: string, width: number, fontSize: number): number {
   const chars = content.replace(/<[^>]+>/g, '').length
   const perLine = Math.max(1, Math.floor(width / (fontSize * 0.55)))
@@ -42,43 +53,52 @@ function textHeight(content: string, width: number, fontSize: number): number {
 
 /**
  * @param attachOnCreate Прикрепляет ли `createFrame` детей по `childrenIds`.
- *   false — быстрый путь не срабатывает, и в дело вступает `frame.add`.
+ *   У репетитора на живой доске — нет: все объекты идут через `frame.add`.
  */
 function setupBoard(attachOnCreate: boolean): Board {
   const created: FakeItem[] = []
+  const before = new Map<string, { x: number; y: number }>()
   let nextId = 0
-  let frameItem: FakeItem | undefined
+  let frame: FakeItem | undefined
+
+  const corner = () => {
+    if (!frame) throw new Error('фрейма ещё нет')
+    return { left: frame.x - frame.width / 2, top: frame.y - frame.height / 2 }
+  }
 
   const make = (type: string, props: Record<string, unknown>): FakeItem => {
-    const item = {
+    const item: FakeItem = {
       id: `${type}-${(nextId += 1)}`,
       type,
       x: Number(props.x ?? 0),
       y: Number(props.y ?? 0),
       width: Number(props.width ?? 0),
       height: Number(props.height ?? 0),
-      sync: async () => {},
+      framed: false,
+      saved: { x: Number(props.x ?? 0), y: Number(props.y ?? 0) },
+      sync: async () => {
+        if (item.framed && (item.x < 0 || item.y < 0)) {
+          item.x = item.saved.x
+          item.y = item.saved.y
+          throw new Error('Position is outside of the parent frame')
+        }
+        item.saved = { x: item.x, y: item.y }
+      },
       setMetadata: async () => {},
       getMetadata: async () => undefined,
-    } as FakeItem
+    }
     created.push(item)
     return item
   }
 
-  /**
-   * Прикрепление к фрейму. У ребёнка отсчёт идёт от центра фрейма.
-   *
-   * `createFrame` по `childrenIds` пересчитывает координаты и объект остаётся
-   * на месте, а `frame.add` — нет: x и y он оставляет как есть, и объект
-   * уезжает ровно на положение фрейма. Эта асимметрия и есть гипотеза о баге.
-   */
-  const attach = (child: FakeItem, frame: FakeItem, compensate: boolean): void => {
+  /** Прикрепление: место на доске прежнее, отсчёт — от угла фрейма. */
+  const attach = (child: FakeItem): void => {
     if (child.framed) return
+    const { left, top } = corner()
+    child.x -= left
+    child.y -= top
+    child.saved = { x: child.x, y: child.y }
     child.framed = true
-    if (compensate) {
-      child.x -= frame.x
-      child.y -= frame.y
-    }
   }
 
   const board = {
@@ -97,28 +117,27 @@ function setupBoard(attachOnCreate: boolean): Board {
     },
     createConnector: async (props: Record<string, unknown>) => make('connector', props),
     createFrame: async (props: Record<string, unknown>) => {
+      for (const item of created) before.set(item.id, { x: item.x, y: item.y })
+
       const self = make('frame', props)
-      frameItem = self
+      frame = self
       const ids: string[] = []
       if (attachOnCreate) {
         for (const id of (props.childrenIds as string[]) ?? []) {
           const child = created.find((c) => c.id === id)
           if (child) {
-            attach(child, self, true)
+            attach(child)
             ids.push(id)
           }
         }
       }
       return {
-        get id() {
-          return self.id
-        },
-        get x() {
-          return self.x
-        },
-        get y() {
-          return self.y
-        },
+        id: self.id,
+        type: 'frame',
+        x: self.x,
+        y: self.y,
+        width: self.width,
+        height: self.height,
         get childrenIds() {
           return ids
         },
@@ -127,12 +146,13 @@ function setupBoard(attachOnCreate: boolean): Board {
         },
         getChildren: async () => created.filter((c) => ids.includes(c.id)),
         add: async (child: FakeItem) => {
-          attach(child, self, false)
+          attach(child)
           if (!ids.includes(child.id)) ids.push(child.id)
         },
         sync: async () => {},
       }
     },
+    getById: async (id: string) => created.find((c) => c.id === id),
     findEmptySpace: async () => ({ x: 0, y: 0, width: 4000, height: 20000 }),
     viewport: {
       get: async () => ({ x: 0, y: 0, width: 2000, height: 1200 }),
@@ -150,54 +170,42 @@ function setupBoard(attachOnCreate: boolean): Board {
 
   return {
     created,
-    frame: () => frameItem,
-    center: (item) =>
-      item.framed && frameItem
-        ? { x: frameItem.x + item.x, y: frameItem.y + item.y }
-        : { x: item.x, y: item.y },
+    before,
+    center: (item) => {
+      if (!item.framed) return { x: item.x, y: item.y }
+      const { left, top } = corner()
+      return { x: left + item.x, y: top + item.y }
+    },
   }
 }
 
-function loadLesson(file: string) {
-  const parsed = parseLessonResponse(readFileSync(file, 'utf8'))
-  if (!parsed.ok) throw new Error(parsed.errors.join('\n'))
-  return parsed.lesson
-}
-
-const LESSON = 'materials/lessons/ef-int-unit1/1b-modern-families.json'
-
-async function straysAfterRender(attachOnCreate: boolean): Promise<string[]> {
+/** Объекты, которые после упаковки оказались не там, где стояли до неё. */
+async function movedByFraming(attachOnCreate: boolean): Promise<string[]> {
   const board = setupBoard(attachOnCreate)
-  await renderLesson(loadLesson(LESSON))
+  await renderLesson(ENGLISH_SAMPLE)
 
-  const frame = board.frame()
-  if (!frame) throw new Error('фрейм урока не создан')
-
-  const left = frame.x - frame.width / 2
-  const right = frame.x + frame.width / 2
-  const top = frame.y - frame.height / 2
-  const bottom = frame.y + frame.height / 2
+  expect(board.before.size, 'урок должен был лечь на доску').toBeGreaterThan(20)
 
   return board.created
-    .filter((item) => item.type !== 'frame')
+    .filter((item) => board.before.has(item.id))
     .filter((item) => {
-      const { x, y } = board.center(item)
-      return (
-        x - item.width / 2 < left - 1 ||
-        x + item.width / 2 > right + 1 ||
-        y - item.height / 2 < top - 1 ||
-        y + item.height / 2 > bottom + 1
-      )
+      const was = board.before.get(item.id)
+      const now = board.center(item)
+      return !was || Math.abs(now.x - was.x) > 1 || Math.abs(now.y - was.y) > 1
     })
-    .map((item) => `${item.type} ${item.id} @ ${Math.round(board.center(item).x)}`)
+    .map((item) => {
+      const was = board.before.get(item.id)
+      const now = board.center(item)
+      return `${item.id}: было ${Math.round(was?.x ?? 0)},${Math.round(was?.y ?? 0)} → стало ${Math.round(now.x)},${Math.round(now.y)}`
+    })
 }
 
-describe('раскладка урока', () => {
-  it('всё лежит внутри фрейма, когда childrenIds срабатывает', async () => {
-    expect(await straysAfterRender(true)).toEqual([])
+describe('упаковка во фрейм ничего не двигает', () => {
+  it('когда дети прикрепляются сразу, по childrenIds', async () => {
+    expect(await movedByFraming(true)).toEqual([])
   })
 
-  it('всё лежит внутри фрейма, когда объекты досоединяются через frame.add', async () => {
-    expect(await straysAfterRender(false)).toEqual([])
+  it('когда все объекты досоединяются через frame.add — как на живой доске', async () => {
+    expect(await movedByFraming(false)).toEqual([])
   })
 })
