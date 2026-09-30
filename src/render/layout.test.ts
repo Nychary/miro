@@ -164,6 +164,8 @@ function setupBoard(attachOnCreate: boolean): Board {
     remove: async () => {},
     group: async (props: Record<string, unknown>) => make('group', props),
     getLayerIndex: async () => 0,
+    // Слои раскладывает сама доска; положение объектов команда не меняет.
+    bringToFront: async () => {},
   }
 
   ;(globalThis as Record<string, unknown>).miro = { board }

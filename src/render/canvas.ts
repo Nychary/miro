@@ -333,13 +333,8 @@ export class Canvas {
   }
 
   /**
-   * Подложка под содержимое карточки.
-   *
-   * Создаётся последней: до того, как Miro разложит текст по строкам, её
-   * высота неизвестна, а поменять размер уже созданной фигуры Web SDK не
-   * даёт — `width` и `height` у неё только для чтения. Поэтому подложка
-   * рождается поверх своего текста, и вниз её уводит не доска, а порядок
-   * детей фрейма — см. `wrapInFrame`.
+   * Подложка под уже размещённые элементы: создаётся последней, чтобы знать
+   * их фактические габариты, и уводится назад, чтобы не перекрыть содержимое.
    */
   async backdrop(box: Box, style: { fillColor: string; borderColor?: string }): Promise<Shape> {
     const item = await this.shape({
@@ -376,17 +371,13 @@ export class Canvas {
 
   // -------------------------------------------------------------------------
 
-  private extend(box: Box): void {
+  private register(item: CanvasItem, box: Box, flow: boolean, gapAfter = 0): void {
+    this.items.push(item)
+
     this.minX = Math.min(this.minX, box.left)
     this.minY = Math.min(this.minY, box.top)
     this.maxX = Math.max(this.maxX, box.left + box.width)
     this.maxY = Math.max(this.maxY, box.top + box.height)
-  }
-
-  private register(item: CanvasItem, box: Box, flow: boolean, gapAfter = 0): void {
-    this.items.push(item)
-
-    this.extend(box)
 
     if (flow) {
       this.cursor = box.top + box.height + gapAfter

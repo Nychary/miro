@@ -131,6 +131,8 @@ function setup(options: Options = {}) {
     remove: async () => {},
     group: async (p: any) => make('group', p),
     getLayerIndex: async () => 0,
+    // Слои раскладывает сама доска; положение объектов команда не меняет.
+    bringToFront: async () => {},
   }
 
   ;(globalThis as Record<string, unknown>).miro = { board }
